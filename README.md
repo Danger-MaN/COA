@@ -1,3 +1,3 @@
-# Welcome to your Crown of Allure
+# Welcome to your Egyptian-Model
 
 TODO: Document your project here
