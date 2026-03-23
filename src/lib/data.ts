@@ -12,65 +12,39 @@ export interface Candidate {
   instagram?: string;
 }
 
-/**
- * شرح التعديل: 
- * 1. نستخدم eager: true لجلب البيانات أثناء البناء.
- * 2. نقوم بتنظيف المسار الناتج ليحذف كلمة "public" تماماً، لأن المتصفح يرى ما بداخل public كأنه في الجذر.
- */
+// 1. تعريف قائمة أسماء المجلدات (أدخل أسماء الفولدرات التي تضعها في public/candidates هنا)
+// هذا يجعل الكود يعرف بالضبط أين يبحث دون تخمين
+const MALE_CANDIDATES = ['Ahmed Wael', 'Omar Al-Rukhami']; 
+const FEMALE_CANDIDATES = ['Modern Nefertiti', 'Modern Cleopatra'];
 
-const imageModules = import.meta.glob('/public/candidates/**/*.{jpg,jpeg,png,webp,svg,JPG}', { eager: true, import: 'default' });
-const textModules = import.meta.glob('/public/candidates/**/*.txt', { eager: true, import: 'default', query: '?raw' });
-
-const candidatesMap: Record<string, Partial<Candidate>> = {};
-
-// معالجة الصور
-Object.keys(imageModules).forEach((path) => {
-  const parts = path.split('/');
-  const gender = path.toLowerCase().includes('/male/') ? 'male' : 'female';
-  const folderName = parts[parts.length - 2]; 
-  const fileName = parts[parts.length - 1];
+// 2. دالة بناء بيانات الشخصية من المسارات المباشرة
+const createCandidate = (folderName: string, gender: Gender): Candidate => {
+  const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${folderName}`;
   
-  // تصحيح المسار: حذف "/public" ليعمل في المتصفح
-  // من: /public/candidates/Male/Name/main.jpg
-  // إلى: /candidates/Male/Name/main.jpg
-  const browserPath = path.replace('/public', '');
+  return {
+    id: folderName.toLowerCase().replace(/\s+/g, '-'),
+    name: folderName,
+    gender: gender,
+    image: `${base}/main.jpg`, // يفترض وجود main.jpg دائماً
+    gallery: [
+      `${base}/main.jpg`,
+      `${base}/gallery/1.jpg`,
+      `${base}/gallery/2.jpg`
+    ],
+    bio: '', // سيتم ملؤها لاحقاً إذا أردت جلبها بـ fetch
+    facebook: '#', 
+    instagram: '#'
+  };
+};
 
-  if (!candidatesMap[folderName]) {
-    candidatesMap[folderName] = {
-      id: folderName,
-      name: folderName,
-      gender,
-      gallery: [],
-      bio: ''
-    };
-  }
-
-  if (fileName.toLowerCase().startsWith('main')) {
-    candidatesMap[folderName].image = browserPath;
-  } else if (path.toLowerCase().includes('/gallery/')) {
-    candidatesMap[folderName].gallery?.push(browserPath);
-  }
-});
-
-// معالجة النصوص
-Object.keys(textModules).forEach((path) => {
-  const parts = path.split('/');
-  const folderName = parts[parts.length - 2];
-  const fileName = parts[parts.length - 1].toLowerCase();
-  const content = (textModules[path] as string).trim();
-
-  if (candidatesMap[folderName]) {
-    if (fileName === 'bio.txt') candidatesMap[folderName].bio = content;
-    if (fileName === 'facebook.txt') candidatesMap[folderName].facebook = content;
-    if (fileName === 'twitter.txt') candidatesMap[folderName].twitter = content;
-    if (fileName === 'instagram.txt') candidatesMap[folderName].instagram = content;
-  }
-});
-
-export const candidates = Object.values(candidatesMap) as Candidate[];
+// 3. تجميع كل الشخصيات في المصفوفة الأساسية
+export const candidates: Candidate[] = [
+  ...MALE_CANDIDATES.map(name => createCandidate(name, 'male')),
+  ...FEMALE_CANDIDATES.map(name => createCandidate(name, 'female'))
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (المحافظة على الأكواد القديمة)
+// منطق التصويت (نفس الكود الأصلي تماماً للحفاظ على بياناتك)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
@@ -81,7 +55,6 @@ function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   const stored = localStorage.getItem(VOTES_KEY);
   if (stored) return JSON.parse(stored);
-  
   const initial: Record<string, number> = {};
   candidates.forEach(c => { initial[c.id] = 0; });
   localStorage.setItem(VOTES_KEY, JSON.stringify(initial));
