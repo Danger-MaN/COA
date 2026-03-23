@@ -13,13 +13,17 @@ export interface Candidate {
   instagram?: string;
 }
 
-// 1. تعريف قائمة الشخصيات (المصفوفة التي قمت بتعديلها)
+// 1. استيراد كافة الملفات النصية والصور من مجلد الـ public (أو assets) برمجياً
+// ملاحظة: Vite سيعامل هذه الملفات كـ "Raw Strings" أي سيجلب النص اللي جواها
+const textFiles = import.meta.glob('/public/candidates/**/*.txt', { eager: true, query: '?raw', import: 'default' });
+
+// 2. مصفوفة الشخصيات التي قمت بتعديلها
 const MALE_CANDIDATES = [
   { name: 'إدريس مجدي', galleryCount: 7, facebook: '#', instagram: '#' }, 
   { name: 'Mohamed Ossama', galleryCount: 4 },
   { name: 'Ahmed Wael', galleryCount: 4 },
-  { name: 'Ahmed ElDeeb', galleryCount: 4, facebook: '#', instagram: '#' },
-  { name: 'Ahmed Mohsen', galleryCount: 3, facebook: '#', instagram: '#' },
+  { name: 'Ahmed ElDeeb', galleryCount: 4 },
+  { name: 'Ahmed Mohsen', galleryCount: 3 },
   { name: 'Ahmed Khalili', galleryCount: 3 }
 ];
 
@@ -29,24 +33,35 @@ const FEMALE_CANDIDATES = [
   { name: 'Helen Hassan', galleryCount: 1 }
 ];
 
-// 2. دالة بناء بيانات الشخصية (تعتمد على المسارات المباشرة لضمان الاستقرار)
+// 3. دالة بناء البيانات وربط الملفات النصية والصور
 const createCandidate = (data: any, gender: Gender): Candidate => {
   const folderName = data.name;
-  const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${folderName}`;
-  
+  const genderPath = gender === 'male' ? 'Male' : 'Female';
+  const basePublicPath = `/candidates/${genderPath}/${folderName}`;
+  const baseInternalPath = `/public/candidates/${genderPath}/${folderName}`;
+
+  // جلب محتوى الملفات النصية (Bio, Votes)
+  const bio = (textFiles[`${baseInternalPath}/bio.txt`] as string) || "";
+  const votesStr = (textFiles[`${baseInternalPath}/votes.txt`] as string) || "0";
+  const initialVotes = parseInt(votesStr.trim()) || 0;
+
+  // جلب الروابط الاجتماعية من الملفات إذا لم تكن محددة في المصفوفة
+  const fb = data.facebook !== '#' ? data.facebook : (textFiles[`${baseInternalPath}/facebook.txt`] as string);
+  const ig = data.instagram !== '#' ? data.instagram : (textFiles[`${baseInternalPath}/instagram.txt`] as string);
+
   return {
     id: folderName.toLowerCase().replace(/\s+/g, '-'),
-    name: folderName, // عرض الاسم كما هو مكتوب في المصفوفة (عربي/إنجليزي)
-    bio: '', // سيتم تحميلها ديناميكياً في الواجهة أو تركها فارغة مؤقتاً
+    name: folderName,
+    bio: bio,
     gender: gender,
-    image: `${base}/main.jpg`,
+    image: `${basePublicPath}/main.jpg`,
     gallery: [
-      `${base}/main.jpg`,
-      ...Array.from({ length: data.galleryCount }, (_, i) => `${base}/gallery/${i + 1}.jpg`)
+      `${basePublicPath}/main.jpg`,
+      ...Array.from({ length: data.galleryCount }, (_, i) => `${basePublicPath}/gallery/${i + 1}.jpg`)
     ],
-    initialVotes: 0, // سنقوم بمعالجة الأصوات في دالة getVotesMap
-    facebook: data.facebook,
-    instagram: data.instagram,
+    initialVotes: initialVotes,
+    facebook: fb || '#',
+    instagram: ig || '#',
     twitter: '#'
   };
 };
@@ -57,28 +72,29 @@ export const candidates: Candidate[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (تم تعديله ليكون متوافقاً مع الهيكل الجديد)
+// منطق التصويت (تم استعادة كافة الدوال لضمان عدم حدوث خطأ Build)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
 const VOTED_KEY = 'taj_voted';
 const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 
-// دالة لجلب خريطة التصويت مع دعم القيم الأولية (إذا أردت وضع قيم ثابتة يدوياً)
 function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
-  
   const stored = localStorage.getItem(VOTES_KEY);
-  const map: Record<string, number> = stored ? JSON.parse(stored) : {};
+  
+  const initialMap: Record<string, number> = {};
+  candidates.forEach(c => { initialMap[c.id] = c.initialVotes; });
 
-  // التأكد من وجود كل مرشح في الخريطة، وإذا لم يوجد نضع له قيمة افتراضية (مثلاً 0)
-  candidates.forEach(c => {
-    if (map[c.id] === undefined) {
-      map[c.id] = 0; 
-    }
-  });
-
-  return map;
+  if (stored) {
+    const storedMap = JSON.parse(stored);
+    Object.keys(initialMap).forEach(id => {
+      if (storedMap[id] !== undefined) {
+        initialMap[id] = storedMap[id];
+      }
+    });
+  }
+  return initialMap;
 }
 
 function saveVotesMap(votes: Record<string, number>) {
