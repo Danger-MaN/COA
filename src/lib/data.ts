@@ -13,10 +13,7 @@ export interface Candidate {
   instagram?: string;
 }
 
-// 1. استيراد الملفات النصية ديناميكياً
-const textModules = import.meta.glob('/public/candidates/**/*.txt', { eager: true, import: 'default', query: '?raw' });
-
-// 2. قائمة الشخصيات التي حددتها
+// 1. تعريف قائمة الشخصيات (المصفوفة التي قمت بتعديلها)
 const MALE_CANDIDATES = [
   { name: 'إدريس مجدي', galleryCount: 7, facebook: '#', instagram: '#' }, 
   { name: 'Mohamed Ossama', galleryCount: 4 },
@@ -32,33 +29,25 @@ const FEMALE_CANDIDATES = [
   { name: 'Helen Hassan', galleryCount: 1 }
 ];
 
-// 3. دالة بناء بيانات الشخصية
+// 2. دالة بناء بيانات الشخصية (تعتمد على المسارات المباشرة لضمان الاستقرار)
 const createCandidate = (data: any, gender: Gender): Candidate => {
   const folderName = data.name;
   const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${folderName}`;
   
-  const getTxtContent = (fileName: string) => {
-    const path = `/public${base}/${fileName}`;
-    return (textModules[path] as string)?.trim() || "";
-  };
-
-  const bio = getTxtContent('bio.txt');
-  const votesFromFile = parseInt(getTxtContent('votes.txt')) || 0;
-
   return {
     id: folderName.toLowerCase().replace(/\s+/g, '-'),
-    name: folderName,
-    bio: bio,
+    name: folderName, // عرض الاسم كما هو مكتوب في المصفوفة (عربي/إنجليزي)
+    bio: '', // سيتم تحميلها ديناميكياً في الواجهة أو تركها فارغة مؤقتاً
     gender: gender,
     image: `${base}/main.jpg`,
     gallery: [
       `${base}/main.jpg`,
       ...Array.from({ length: data.galleryCount }, (_, i) => `${base}/gallery/${i + 1}.jpg`)
     ],
-    initialVotes: votesFromFile,
-    facebook: data.facebook !== '#' ? data.facebook : getTxtContent('facebook.txt'),
-    instagram: data.instagram !== '#' ? data.instagram : getTxtContent('instagram.txt'),
-    twitter: getTxtContent('twitter.txt')
+    initialVotes: 0, // سنقوم بمعالجة الأصوات في دالة getVotesMap
+    facebook: data.facebook,
+    instagram: data.instagram,
+    twitter: '#'
   };
 };
 
@@ -68,32 +57,28 @@ export const candidates: Candidate[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (تم استعادة undoVote لإصلاح خطأ البناء)
+// منطق التصويت (تم تعديله ليكون متوافقاً مع الهيكل الجديد)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
 const VOTED_KEY = 'taj_voted';
 const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 
+// دالة لجلب خريطة التصويت مع دعم القيم الأولية (إذا أردت وضع قيم ثابتة يدوياً)
 function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
-  const stored = localStorage.getItem(VOTES_KEY);
   
-  const initialMap: Record<string, number> = {};
+  const stored = localStorage.getItem(VOTES_KEY);
+  const map: Record<string, number> = stored ? JSON.parse(stored) : {};
+
+  // التأكد من وجود كل مرشح في الخريطة، وإذا لم يوجد نضع له قيمة افتراضية (مثلاً 0)
   candidates.forEach(c => {
-    initialMap[c.id] = c.initialVotes;
+    if (map[c.id] === undefined) {
+      map[c.id] = 0; 
+    }
   });
 
-  if (stored) {
-    const storedMap = JSON.parse(stored);
-    Object.keys(initialMap).forEach(id => {
-      if (storedMap[id] !== undefined) {
-        initialMap[id] = storedMap[id];
-      }
-    });
-  }
-  
-  return initialMap;
+  return map;
 }
 
 function saveVotesMap(votes: Record<string, number>) {
@@ -144,7 +129,6 @@ export function castVote(candidateId: string, gender: Gender): boolean {
   return true;
 }
 
-// --- الدالة التي كانت تسبب الخطأ ---
 export function undoVote(gender: Gender): boolean {
   const candidateId = getVotedCandidateId(gender);
   if (!candidateId) return false;
