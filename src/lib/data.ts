@@ -1,70 +1,189 @@
-export type Gender = 'male' | 'female';
+import type { Candidate, Gender } from './types'; // adjust path if needed
 
-export interface Candidate {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  bioAr: string;
-  bioEn: string;
-  gender: Gender;
-  image: string;
-  gallery: string[];
-  facebook?: string;
-  twitter?: string;
-  instagram?: string;
+// Use Vite's glob import to collect all files from candidate folders.
+// All patterns are relative to the project root (src/). Adjust if assets are elsewhere.
+const basePath = '/src/assets/candidates';
+
+// ---- Main images ----
+const mainImages = import.meta.glob<{ default: string }>(
+  `${basePath}/*/*/main.*`,
+  { eager: true }
+);
+
+// ---- Text files ----
+const bioFiles = import.meta.glob<string>(
+  `${basePath}/*/*/bio.txt`,
+  { eager: true, as: 'raw' }
+);
+const votesFiles = import.meta.glob<string>(
+  `${basePath}/*/*/votes.txt`,
+  { eager: true, as: 'raw' }
+);
+const instagramFiles = import.meta.glob<string>(
+  `${basePath}/*/*/instagram.txt`,
+  { eager: true, as: 'raw' }
+);
+const facebookFiles = import.meta.glob<string>(
+  `${basePath}/*/*/facebook.txt`,
+  { eager: true, as: 'raw' }
+);
+const twitterFiles = import.meta.glob<string>(
+  `${basePath}/*/*/twitter.txt`,
+  { eager: true, as: 'raw' }
+);
+const nameArFiles = import.meta.glob<string>(
+  `${basePath}/*/*/name_ar.txt`,
+  { eager: true, as: 'raw' }
+);
+const nameEnFiles = import.meta.glob<string>(
+  `${basePath}/*/*/name_en.txt`,
+  { eager: true, as: 'raw' }
+);
+
+// ---- Gallery images ----
+const galleryFiles = import.meta.glob<{ default: string }>(
+  `${basePath}/*/*/Gallery/*.*`,
+  { eager: true }
+);
+
+/**
+ * Extracts the candidate folder key from a file path.
+ * Example: "/src/assets/candidates/Male/Ahmed Wael/main.jpg" -> "Male/Ahmed Wael"
+ */
+function getCandidateKey(path: string): string {
+  const parts = path.split('/');
+  // Expected: ..., candidates, Gender, FolderName, ... or Gender/FolderName/Gallery/...
+  const genderIndex = parts.findIndex(p => p === 'Male' || p === 'Female');
+  if (genderIndex === -1) throw new Error(`Invalid path: ${path}`);
+  const folderName = parts[genderIndex + 1];
+  if (!folderName) throw new Error(`Invalid path, missing folder name: ${path}`);
+  return `${parts[genderIndex]}/${folderName}`;
 }
 
-// دالة سحرية لجلب مسار أي ملف داخل مجلد candidates بشكل ديناميكي
-const getAssetUrl = (path: string) => {
-  // نقوم بتمرير المسار النسبي من مجلد assets
-  return new URL(`./assets/candidates/${path}`, import.meta.url).href;
-};
+// Build a map from candidateKey to its main image URL
+const mainMap: Record<string, string> = {};
+for (const [path, mod] of Object.entries(mainImages)) {
+  const key = getCandidateKey(path);
+  mainMap[key] = (mod as { default: string }).default;
+}
 
-// مصفوفة الشخصيات - الآن يمكنك إضافة أي شخصية ببساطة بتكرار الكائن
-export const candidates: Candidate[] = [
-  {
-    id: 'm1',
-    nameAr: 'يوسف الأثري',
-    nameEn: 'Youssef Al-Athari',
-    gender: 'male',
-    // المسار هنا يبدأ من داخل مجلد candidates
-    image: getAssetUrl('Male/YousefAlAthari/main.jpg'),
-    gallery: [
-      getAssetUrl('Male/YousefAlAthari/main.jpg'),
-      getAssetUrl('Male/YousefAlAthari/gallery/1.jpg'),
-      getAssetUrl('Male/YousefAlAthari/gallery/2.jpg'),
-    ],
-    bioAr: "نص السيرة الذاتية هنا...", // أو يمكنك جلبها كـ String عادي
-    bioEn: "Bio text here...",
-    facebook: 'https://facebook.com',
-    instagram: 'https://instagram.com'
-  },
-  {
-    id: 'm2',
-    nameAr: 'أحمد وائل',
-    nameEn: 'Ahmed Wael',
-    gender: 'male',
-    image: getAssetUrl('Male/AhmedWael/main.jpg'),
-    gallery: [
-      getAssetUrl('Male/AhmedWael/main.jpg'),
-      getAssetUrl('Male/AhmedWael/gallery/1.jpg'),
-    ],
-    bioAr: "سيرة ذاتية لأحمد وائل",
-    bioEn: "Ahmed Wael Bio",
-    facebook: 'https://facebook.com/ahmed'
-  }
-];
+// Build map from candidateKey to gallery image URLs (sorted naturally)
+const galleryMap: Record<string, string[]> = {};
+for (const [path, mod] of Object.entries(galleryFiles)) {
+  const key = getCandidateKey(path);
+  if (!galleryMap[key]) galleryMap[key] = [];
+  galleryMap[key].push((mod as { default: string }).default);
+}
+// Sort gallery images by filename (natural order) for consistency
+for (const key in galleryMap) {
+  galleryMap[key].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
 
-// --- بقية الدوال الخاصة بالتصويت (نفس المنطق القديم مع تعديل مفتاح التصويت الأولي) ---
+// Helper to read text file content from a map
+function getTextContent(map: Record<string, string>, key: string): string | undefined {
+  return map[key]?.trim();
+}
 
+// Build candidate objects using the collected data
+const candidateKeys = Object.keys(mainMap);
+const builtCandidates: Candidate[] = [];
+
+for (const key of candidateKeys) {
+  const [genderStr, folderName] = key.split('/');
+  const gender = genderStr.toLowerCase() as Gender;
+  // ID: gender + underscore + folder name slugified (spaces removed)
+  const id = `${gender}_${folderName.replace(/\s+/g, '_')}`;
+
+  // Names: try reading from name_ar.txt / name_en.txt, otherwise fallback to folder name
+  const nameAr = getTextContent(nameArFiles, key) || folderName;
+  const nameEn = getTextContent(nameEnFiles, key) || folderName;
+
+  // Bio: use the same text for both languages (single bio.txt)
+  const bio = getTextContent(bioFiles, key) || '';
+  const bioAr = bio;
+  const bioEn = bio;
+
+  // Social links
+  const instagram = getTextContent(instagramFiles, key);
+  const facebook = getTextContent(facebookFiles, key);
+  const twitter = getTextContent(twitterFiles, key);
+
+  // Votes: read from votes.txt
+  const votesRaw = getTextContent(votesFiles, key);
+  const initialVote = votesRaw ? parseInt(votesRaw, 10) : 0;
+
+  // Image and gallery
+  const image = mainMap[key];
+  const gallery = galleryMap[key] ? [image, ...galleryMap[key]] : [image]; // main image first
+
+  builtCandidates.push({
+    id,
+    nameAr,
+    nameEn,
+    bioAr,
+    bioEn,
+    gender,
+    image,
+    gallery,
+    facebook,
+    twitter,
+    instagram,
+  });
+}
+
+// Export the dynamically built candidates array
+export const candidates: Candidate[] = builtCandidates;
+
+// ---- Vote storage & helpers (unchanged logic, but initial votes are dynamic) ----
 const VOTES_KEY = 'taj_votes';
-const INITIAL_VOTES = candidates.reduce((acc, c) => ({ ...acc, [c.id]: c.initialVotes }), {});
+const VOTED_KEY = 'taj_voted';
+const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 
+// Build initial votes map from votes.txt values
+const INITIAL_VOTES: Record<string, number> = {};
+for (const candidate of candidates) {
+  const votesFileKey = `${candidate.gender === 'male' ? 'Male' : 'Female'}/${candidate.nameEn}`;
+  // We don't have the original key; better to get from the already built candidate.
+  // Since we already read the votes.txt during building, we need to store the initial vote somewhere.
+  // Let's re-read it from the votesFiles map using the candidate key.
+  // But we lost the mapping from candidate.id to votes.txt content.
+  // Simpler: while building, we stored the initial vote in a separate map.
+}
+// To avoid double reading, we can store initial votes in a separate variable during building.
+
+// Let's rebuild a map from candidate ID to its initial vote count.
+const initialVotesMap: Record<string, number> = {};
+for (const [path, mod] of Object.entries(votesFiles)) {
+  const key = getCandidateKey(path);
+  const candidate = builtCandidates.find(c => {
+    const candidateKey = `${c.gender === 'male' ? 'Male' : 'Female'}/${c.nameEn}`;
+    return candidateKey === key;
+  });
+  if (candidate) {
+    const vote = parseInt((mod as string).trim(), 10);
+    if (!isNaN(vote)) initialVotesMap[candidate.id] = vote;
+  }
+}
+// For any candidate without votes.txt, default to 0
+for (const c of builtCandidates) {
+  if (!(c.id in initialVotesMap)) initialVotesMap[c.id] = 0;
+}
+
+// Function to get current votes (merged with localStorage)
 function getVotesMap(): Record<string, number> {
   const stored = localStorage.getItem(VOTES_KEY);
-  if (stored) return JSON.parse(stored);
-  localStorage.setItem(VOTES_KEY, JSON.stringify(INITIAL_VOTES));
-  return { ...INITIAL_VOTES };
+  if (stored) {
+    const parsed = JSON.parse(stored);
+    // Merge with initial votes in case new candidates were added
+    const merged = { ...initialVotesMap };
+    for (const [id, count] of Object.entries(parsed)) {
+      if (id in merged) merged[id] = count;
+    }
+    return merged;
+  }
+  // No stored votes: use initial votes and persist them
+  localStorage.setItem(VOTES_KEY, JSON.stringify(initialVotesMap));
+  return { ...initialVotesMap };
 }
 
 function saveVotesMap(votes: Record<string, number>) {
