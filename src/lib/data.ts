@@ -29,7 +29,15 @@ const createCandidate = (folderName: string, gender: Gender): Candidate => {
     gallery: [
       `${base}/main.jpg`,
       `${base}/gallery/1.jpg`,
-      `${base}/gallery/2.jpg`
+      `${base}/gallery/2.jpg`,
+      `${base}/gallery/3.jpg`,
+      `${base}/gallery/4.jpg`,
+      `${base}/gallery/5.jpg`,
+      `${base}/gallery/6.jpg`,
+      `${base}/gallery/7.jpg`,
+      `${base}/gallery/8.jpg`,
+      `${base}/gallery/9.jpg`,
+      `${base}/gallery/10.jpg`
     ],
     bio: '', // سيتم ملؤها لاحقاً إذا أردت جلبها بـ fetch
     facebook: '#', 
