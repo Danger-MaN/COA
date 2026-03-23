@@ -7,16 +7,16 @@ export interface Candidate {
   gender: Gender;
   image: string;
   gallery: string[];
-  initialVotes: number; // لإظهار العدد من ملف votes.txt
+  initialVotes: number;
   facebook?: string;
   twitter?: string;
   instagram?: string;
 }
 
-// 1. استيراد الملفات النصية ديناميكياً (لجلب الـ Bio والـ Votes)
+// 1. استيراد الملفات النصية ديناميكياً
 const textModules = import.meta.glob('/public/candidates/**/*.txt', { eager: true, import: 'default', query: '?raw' });
 
-// 2. القائمة التي قمت بتعديلها
+// 2. قائمة الشخصيات التي حددتها
 const MALE_CANDIDATES = [
   { name: 'إدريس مجدي', galleryCount: 7, facebook: '#', instagram: '#' }, 
   { name: 'Mohamed Ossama', galleryCount: 4 },
@@ -32,12 +32,11 @@ const FEMALE_CANDIDATES = [
   { name: 'Helen Hassan', galleryCount: 1 }
 ];
 
-// 3. دالة بناء البيانات وربطها بالملفات النصية
+// 3. دالة بناء بيانات الشخصية
 const createCandidate = (data: any, gender: Gender): Candidate => {
   const folderName = data.name;
   const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${folderName}`;
   
-  // البحث عن محتوى الملفات النصية لهذا الفولدر تحديداً
   const getTxtContent = (fileName: string) => {
     const path = `/public${base}/${fileName}`;
     return (textModules[path] as string)?.trim() || "";
@@ -48,7 +47,7 @@ const createCandidate = (data: any, gender: Gender): Candidate => {
 
   return {
     id: folderName.toLowerCase().replace(/\s+/g, '-'),
-    name: folderName, // سيظهر الاسم العربي أو الإنجليزي كما هو مكتوب في اسم الفولدر
+    name: folderName,
     bio: bio,
     gender: gender,
     image: `${base}/main.jpg`,
@@ -69,7 +68,7 @@ export const candidates: Candidate[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (المعدل ليدعم initialVotes من الملفات)
+// منطق التصويت (تم استعادة undoVote لإصلاح خطأ البناء)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
@@ -80,7 +79,6 @@ function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   const stored = localStorage.getItem(VOTES_KEY);
   
-  // دمج الأصوات الأولية من الملفات مع الأصوات المخزنة في الجهاز
   const initialMap: Record<string, number> = {};
   candidates.forEach(c => {
     initialMap[c.id] = c.initialVotes;
@@ -88,7 +86,6 @@ function getVotesMap(): Record<string, number> {
 
   if (stored) {
     const storedMap = JSON.parse(stored);
-    // نحدث فقط القيم الموجودة فعلياً لضمان عدم ضياع أصوات المستخدمين الجدد
     Object.keys(initialMap).forEach(id => {
       if (storedMap[id] !== undefined) {
         initialMap[id] = storedMap[id];
@@ -144,6 +141,31 @@ export function castVote(candidateId: string, gender: Gender): boolean {
   localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
 
   document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
+  return true;
+}
+
+// --- الدالة التي كانت تسبب الخطأ ---
+export function undoVote(gender: Gender): boolean {
+  const candidateId = getVotedCandidateId(gender);
+  if (!candidateId) return false;
+
+  const votes = getVotesMap();
+  if (votes[candidateId] && votes[candidateId] > 0) {
+    votes[candidateId] -= 1;
+  }
+  saveVotesMap(votes);
+
+  const votedStr = localStorage.getItem(VOTED_KEY);
+  const votedMap: Record<string, boolean> = votedStr ? JSON.parse(votedStr) : {};
+  delete votedMap[gender];
+  localStorage.setItem(VOTED_KEY, JSON.stringify(votedMap));
+
+  const candidateStr = localStorage.getItem(VOTED_CANDIDATE_KEY);
+  const candidateMap: Record<string, string> = candidateStr ? JSON.parse(candidateStr) : {};
+  delete candidateMap[gender];
+  localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
+
+  document.cookie = `voted_${gender}=; max-age=0; path=/`;
   return true;
 }
 
