@@ -12,47 +12,50 @@ export interface Candidate {
   instagram?: string;
 }
 
-// 1. تعريف قائمة أسماء المجلدات (أدخل أسماء الفولدرات التي تضعها في public/candidates هنا)
-// هذا يجعل الكود يعرف بالضبط أين يبحث دون تخمين
-const MALE_CANDIDATES = ['إدريس مجدي', 'Omar Al-Rukhami']; 
-const FEMALE_CANDIDATES = ['Emma El Torky', 'Modern Cleopatra'];
+// 1. تعريف الشخصيات وتفاصيلها الفريدة (عدد صور المعرض، الروابط، إلخ)
+const MALE_CANDIDATES = [
+  { name: 'Ahmed Wael', galleryCount: 5, facebook: '#', instagram: '#' }, 
+  { name: 'Omar Al-Rukhami', galleryCount: 2 },
+  { name: 'Yousef Al-Athari', galleryCount: 8 }
+];
 
-// 2. دالة بناء بيانات الشخصية من المسارات المباشرة
-const createCandidate = (folderName: string, gender: Gender): Candidate => {
-  const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${folderName}`;
+const FEMALE_CANDIDATES = [
+  { name: 'Modern Nefertiti', galleryCount: 3, instagram: '#' },
+  { name: 'Modern Cleopatra', galleryCount: 1 }
+];
+
+// 2. دالة بناء المسارات بشكل ديناميكي
+const createCandidate = (data: { name: string; galleryCount: number; facebook?: string; instagram?: string; twitter?: string }, gender: Gender): Candidate => {
+  const base = `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${data.name}`;
   
+  // توليد مصفوفة الصور بناءً على العدد المحدد (galleryCount)
+  // سيبحث عن 1.jpg, 2.jpg, 3.jpg... إلخ داخل فولدر gallery
+  const galleryImages = Array.from({ length: data.galleryCount }, (_, i) => `${base}/gallery/${i + 1}.jpg`);
+
   return {
-    id: folderName.toLowerCase().replace(/\s+/g, '-'),
-    name: folderName,
+    id: data.name.toLowerCase().replace(/\s+/g, '-'),
+    name: data.name,
     gender: gender,
-    image: `${base}/main.jpg`, // يفترض وجود main.jpg دائماً
+    image: `${base}/main.jpg`,
     gallery: [
-      `${base}/main.jpg`,
-      `${base}/gallery/1.jpg`,
-      `${base}/gallery/2.jpg`,
-      `${base}/gallery/3.jpg`,
-      `${base}/gallery/4.jpg`,
-      `${base}/gallery/5.jpg`,
-      `${base}/gallery/6.jpg`,
-      `${base}/gallery/7.jpg`,
-      `${base}/gallery/8.jpg`,
-      `${base}/gallery/9.jpg`,
-      `${base}/gallery/10.jpg`
+      `${base}/main.jpg`, // إضافة الصورة الرئيسية أولاً في المعرض
+      ...galleryImages
     ],
-    bio: '', // سيتم ملؤها لاحقاً إذا أردت جلبها بـ fetch
-    facebook: '#', 
-    instagram: '#'
+    bio: '', // سيتم عرضها من الكود الأمامي أو ملفات التحميل
+    facebook: data.facebook,
+    twitter: data.twitter,
+    instagram: data.instagram
   };
 };
 
-// 3. تجميع كل الشخصيات في المصفوفة الأساسية
+// 3. تجميع مصفوفة الشخصيات
 export const candidates: Candidate[] = [
-  ...MALE_CANDIDATES.map(name => createCandidate(name, 'male')),
-  ...FEMALE_CANDIDATES.map(name => createCandidate(name, 'female'))
+  ...MALE_CANDIDATES.map(c => createCandidate(c, 'male')),
+  ...FEMALE_CANDIDATES.map(c => createCandidate(c, 'female'))
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (نفس الكود الأصلي تماماً للحفاظ على بياناتك)
+// منطق التصويت (نفس الكود الأصلي تماماً لضمان عدم ضياع التصويتات)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
