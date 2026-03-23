@@ -1,8 +1,8 @@
 export type Gender = 'male' | 'female';
 
 export interface Candidate {
-  id: string; // سيتم اشتقاقه من اسم الفولدر
-  name: string; // اسم الفولدر كما هو (عربي أو إنجليزي)
+  id: string;
+  name: string;
   bio: string;
   gender: Gender;
   image: string;
@@ -12,28 +12,32 @@ export interface Candidate {
   instagram?: string;
 }
 
-// 1. جلب كافة الملفات من مجلد public/candidates بشكل ديناميكي
-// ملاحظة: Vite سيتعرف على هذه الملفات أثناء البناء بفضل import.meta.glob
+/**
+ * شرح التعديل: 
+ * 1. نستخدم eager: true لجلب البيانات أثناء البناء.
+ * 2. نقوم بتنظيف المسار الناتج ليحذف كلمة "public" تماماً، لأن المتصفح يرى ما بداخل public كأنه في الجذر.
+ */
+
 const imageModules = import.meta.glob('/public/candidates/**/*.{jpg,jpeg,png,webp,svg,JPG}', { eager: true, import: 'default' });
 const textModules = import.meta.glob('/public/candidates/**/*.txt', { eager: true, import: 'default', query: '?raw' });
 
 const candidatesMap: Record<string, Partial<Candidate>> = {};
 
-// 2. بناء بيانات الشخصيات بناءً على هيكل المجلدات
+// معالجة الصور
 Object.keys(imageModules).forEach((path) => {
   const parts = path.split('/');
-  // تحديد النوع بناءً على المجلد الرئيسي (Male أو Female)
   const gender = path.toLowerCase().includes('/male/') ? 'male' : 'female';
-  // اسم الفولدر الذي يحتوي على الملف هو اسم الشخصية
   const folderName = parts[parts.length - 2]; 
   const fileName = parts[parts.length - 1];
   
-  // تحويل المسار لمسار صالح للمتصفح (إزالة /public)
+  // تصحيح المسار: حذف "/public" ليعمل في المتصفح
+  // من: /public/candidates/Male/Name/main.jpg
+  // إلى: /candidates/Male/Name/main.jpg
   const browserPath = path.replace('/public', '');
 
   if (!candidatesMap[folderName]) {
     candidatesMap[folderName] = {
-      id: folderName, // استخدام اسم الفولدر كـ ID فريد
+      id: folderName,
       name: folderName,
       gender,
       gallery: [],
@@ -41,17 +45,14 @@ Object.keys(imageModules).forEach((path) => {
     };
   }
 
-  // إذا كانت الصورة تبدأ بـ main فهي الصورة الأساسية
   if (fileName.toLowerCase().startsWith('main')) {
     candidatesMap[folderName].image = browserPath;
-  } 
-  // إذا كان الملف داخل مجلد gallery يضاف لمعرض الصور
-  else if (path.toLowerCase().includes('/gallery/')) {
+  } else if (path.toLowerCase().includes('/gallery/')) {
     candidatesMap[folderName].gallery?.push(browserPath);
   }
 });
 
-// 3. قراءة الملفات النصية (Bio, Social Links)
+// معالجة النصوص
 Object.keys(textModules).forEach((path) => {
   const parts = path.split('/');
   const folderName = parts[parts.length - 2];
@@ -66,22 +67,21 @@ Object.keys(textModules).forEach((path) => {
   }
 });
 
-// تصدير مصفوفة الشخصيات النهائية
 export const candidates = Object.values(candidatesMap) as Candidate[];
 
-// --- الأكواد القديمة (منطق التصويت) مع الحفاظ على وظائفها ---
+// ─────────────────────────────────────────────────────────────────────────────
+// منطق التصويت (المحافظة على الأكواد القديمة)
+// ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
 const VOTED_KEY = 'taj_voted';
 const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 
-// دالة لجلب خريطة التصويت (تعتمد الآن على IDs الشخصيات الموجودة حالياً)
 function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   const stored = localStorage.getItem(VOTES_KEY);
   if (stored) return JSON.parse(stored);
   
-  // إذا لم يوجد تخزين سابق، نبدأ بـ 0 لجميع الشخصيات الحالية
   const initial: Record<string, number> = {};
   candidates.forEach(c => { initial[c.id] = 0; });
   localStorage.setItem(VOTES_KEY, JSON.stringify(initial));
