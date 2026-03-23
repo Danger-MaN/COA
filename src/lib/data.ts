@@ -9,60 +9,51 @@ export interface Candidate {
   gender: Gender;
   image: string;
   gallery: string[];
-  initialVotes: number;
   facebook?: string;
   twitter?: string;
   instagram?: string;
 }
 
-// 1. جلب كل الصور والملفات النصية من فولدر candidates بشكل ديناميكي
-const imageFiles = import.meta.glob('@/assets/candidates/**/*.{jpg,jpeg,png,webp,svg}', { eager: true, query: '?url', import: 'default' });
-const textFiles = import.meta.glob('@/assets/candidates/**/*.txt', { eager: true, query: '?raw', import: 'default' });
-
-// 2. دالة لاستخراج اسم الشخصية من المسار
-const extractNameFromPath = (path: string) => {
-  const parts = path.split('/');
-  return parts[parts.length - 2]; // اسم الفولدر قبل الأخير هو اسم الشخصية
+// دالة سحرية لجلب مسار أي ملف داخل مجلد candidates بشكل ديناميكي
+const getAssetUrl = (path: string) => {
+  // نقوم بتمرير المسار النسبي من مجلد assets
+  return new URL(`./assets/candidates/${path}`, import.meta.url).href;
 };
 
-// 3. بناء مصفوفة الشخصيات برمجياً
-const candidatesMap: Record<string, Partial<Candidate>> = {};
-
-// معالجة الصور (Main & Gallery)
-Object.keys(imageFiles).forEach((path) => {
-  const name = extractNameFromPath(path);
-  const gender = path.toLowerCase().includes('/male/') ? 'male' : 'female';
-  const fileName = path.split('/').pop() || '';
-  const fileUrl = imageFiles[path] as string;
-
-  if (!candidatesMap[name]) {
-    candidatesMap[name] = { id: name, nameEn: name, gender, gallery: [] };
+// مصفوفة الشخصيات - الآن يمكنك إضافة أي شخصية ببساطة بتكرار الكائن
+export const candidates: Candidate[] = [
+  {
+    id: 'm1',
+    nameAr: 'يوسف الأثري',
+    nameEn: 'Youssef Al-Athari',
+    gender: 'male',
+    // المسار هنا يبدأ من داخل مجلد candidates
+    image: getAssetUrl('Male/YousefAlAthari/main.jpg'),
+    gallery: [
+      getAssetUrl('Male/YousefAlAthari/main.jpg'),
+      getAssetUrl('Male/YousefAlAthari/gallery/1.jpg'),
+      getAssetUrl('Male/YousefAlAthari/gallery/2.jpg'),
+    ],
+    bioAr: "نص السيرة الذاتية هنا...", // أو يمكنك جلبها كـ String عادي
+    bioEn: "Bio text here...",
+    facebook: 'https://facebook.com',
+    instagram: 'https://instagram.com'
+  },
+  {
+    id: 'm2',
+    nameAr: 'أحمد وائل',
+    nameEn: 'Ahmed Wael',
+    gender: 'male',
+    image: getAssetUrl('Male/AhmedWael/main.jpg'),
+    gallery: [
+      getAssetUrl('Male/AhmedWael/main.jpg'),
+      getAssetUrl('Male/AhmedWael/gallery/1.jpg'),
+    ],
+    bioAr: "سيرة ذاتية لأحمد وائل",
+    bioEn: "Ahmed Wael Bio",
+    facebook: 'https://facebook.com/ahmed'
   }
-
-  if (fileName.startsWith('main')) {
-    candidatesMap[name].image = fileUrl;
-  } else if (path.includes('/gallery/')) {
-    candidatesMap[name].gallery?.push(fileUrl);
-  }
-});
-
-// معالجة الملفات النصية (Bio, Social, Votes)
-Object.keys(textFiles).forEach((path) => {
-  const name = extractNameFromPath(path);
-  const fileName = path.split('/').pop() || '';
-  const content = (textFiles[path] as string).trim();
-
-  if (candidatesMap[name]) {
-    if (fileName === 'bio_ar.txt') candidatesMap[name].bioAr = content;
-    if (fileName === 'bio_en.txt') candidatesMap[name].bioEn = content;
-    if (fileName === 'facebook.txt') candidatesMap[name].facebook = content;
-    if (fileName === 'twitter.txt') candidatesMap[name].twitter = content;
-    if (fileName === 'instagram.txt') candidatesMap[name].instagram = content;
-    if (fileName === 'votes.txt') candidatesMap[name].initialVotes = parseInt(content) || 0;
-  }
-});
-
-export const candidates = Object.values(candidatesMap) as Candidate[];
+];
 
 // --- بقية الدوال الخاصة بالتصويت (نفس المنطق القديم مع تعديل مفتاح التصويت الأولي) ---
 
