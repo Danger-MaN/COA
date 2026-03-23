@@ -14,8 +14,8 @@ export interface Candidate {
 
 // 1. تعريف قائمة أسماء المجلدات (أدخل أسماء الفولدرات التي تضعها في public/candidates هنا)
 // هذا يجعل الكود يعرف بالضبط أين يبحث دون تخمين
-const MALE_CANDIDATES = ['Ahmed Wael', 'Omar Al-Rukhami']; 
-const FEMALE_CANDIDATES = ['Modern Nefertiti', 'Modern Cleopatra'];
+const MALE_CANDIDATES = ['إدريس مجدي', 'Omar Al-Rukhami']; 
+const FEMALE_CANDIDATES = ['Emma El Torky', 'Modern Cleopatra'];
 
 // 2. دالة بناء بيانات الشخصية من المسارات المباشرة
 const createCandidate = (folderName: string, gender: Gender): Candidate => {
