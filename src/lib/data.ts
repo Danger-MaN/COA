@@ -14,13 +14,13 @@ export interface Candidate {
 
 // 1. تعريف الشخصيات وتفاصيلها الفريدة (عدد صور المعرض، الروابط، إلخ)
 const MALE_CANDIDATES = [
-  { name: 'إدريس مجدي', galleryCount: 5, facebook: '#', instagram: '#' }, 
+  { name: 'إدريس مجدي', galleryCount: 7, facebook: '#', instagram: '#' }, 
   { name: 'Omar Al-Rukhami', galleryCount: 2 },
   { name: 'Yousef Al-Athari', galleryCount: 8 }
 ];
 
 const FEMALE_CANDIDATES = [
-  { name: 'Emma El Torky', galleryCount: 3, instagram: '#' },
+  { name: 'Emma El Torky', galleryCount: 4, instagram: '#' },
   { name: 'Modern Cleopatra', galleryCount: 1 }
 ];
 
