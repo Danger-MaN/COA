@@ -13,66 +13,76 @@ export interface Candidate {
   instagram?: string;
 }
 
-// 1. استيراد كافة الملفات النصية والصور من مجلد الـ public (أو assets) برمجياً
-// ملاحظة: Vite سيعامل هذه الملفات كـ "Raw Strings" أي سيجلب النص اللي جواها
-const textFiles = import.meta.glob('/public/candidates/**/*.txt', { eager: true, query: '?raw', import: 'default' });
-
-// 2. مصفوفة الشخصيات التي قمت بتعديلها
-const MALE_CANDIDATES = [
+// 1. تعريف القائمة التي قمت بإضافتها
+const MALE_CANDIDATES_LIST = [
   { name: 'إدريس مجدي', galleryCount: 7, facebook: '#', instagram: '#' }, 
   { name: 'Mohamed Ossama', galleryCount: 4 },
   { name: 'Ahmed Wael', galleryCount: 4 },
-  { name: 'Ahmed ElDeeb', galleryCount: 4 },
-  { name: 'Ahmed Mohsen', galleryCount: 3 },
+  { name: 'Ahmed ElDeeb', galleryCount: 4, facebook: '#', instagram: '#' },
+  { name: 'Ahmed Mohsen', galleryCount: 3, facebook: '#', instagram: '#' },
   { name: 'Ahmed Khalili', galleryCount: 3 }
 ];
 
-const FEMALE_CANDIDATES = [
+const FEMALE_CANDIDATES_LIST = [
   { name: 'Emma El Torky', galleryCount: 4, instagram: '#' },
   { name: 'Rania Rashwan', galleryCount: 1, instagram: '#' },
   { name: 'Helen Hassan', galleryCount: 1 }
 ];
 
-// 3. دالة بناء البيانات وربط الملفات النصية والصور
-const createCandidate = (data: any, gender: Gender): Candidate => {
-  const folderName = data.name;
-  const genderPath = gender === 'male' ? 'Male' : 'Female';
-  const basePublicPath = `/candidates/${genderPath}/${folderName}`;
-  const baseInternalPath = `/public/candidates/${genderPath}/${folderName}`;
-
-  // جلب محتوى الملفات النصية (Bio, Votes)
-  const bio = (textFiles[`${baseInternalPath}/bio.txt`] as string) || "";
-  const votesStr = (textFiles[`${baseInternalPath}/votes.txt`] as string) || "0";
-  const initialVotes = parseInt(votesStr.trim()) || 0;
-
-  // جلب الروابط الاجتماعية من الملفات إذا لم تكن محددة في المصفوفة
-  const fb = data.facebook !== '#' ? data.facebook : (textFiles[`${baseInternalPath}/facebook.txt`] as string);
-  const ig = data.instagram !== '#' ? data.instagram : (textFiles[`${baseInternalPath}/instagram.txt`] as string);
-
-  return {
-    id: folderName.toLowerCase().replace(/\s+/g, '-'),
-    name: folderName,
-    bio: bio,
-    gender: gender,
-    image: `${basePublicPath}/main.jpg`,
-    gallery: [
-      `${basePublicPath}/main.jpg`,
-      ...Array.from({ length: data.galleryCount }, (_, i) => `${basePublicPath}/gallery/${i + 1}.jpg`)
-    ],
-    initialVotes: initialVotes,
-    facebook: fb || '#',
-    instagram: ig || '#',
-    twitter: '#'
-  };
-};
+// 2. وظيفة لجلب النصوص من الملفات (fetch)
+// سنستخدم هذه الوظيفة داخل الواجهة أو عند الحاجة، ولكن هنا سنجهز المسارات
+const getCandidatePath = (name: string, gender: Gender) => 
+  `/candidates/${gender === 'male' ? 'Male' : 'Female'}/${name}`;
 
 export const candidates: Candidate[] = [
-  ...MALE_CANDIDATES.map(c => createCandidate(c, 'male')),
-  ...FEMALE_CANDIDATES.map(c => createCandidate(c, 'female'))
+  ...MALE_CANDIDATES_LIST.map(c => ({
+    id: c.name.toLowerCase().replace(/\s+/g, '-'),
+    name: c.name,
+    bio: '', // سيتم تحميلها عبر fetch في المكون (Component)
+    gender: 'male' as Gender,
+    image: `${getCandidatePath(c.name, 'male')}/main.jpg`,
+    gallery: [
+      `${getCandidatePath(c.name, 'male')}/main.jpg`,
+      ...Array.from({ length: c.galleryCount }, (_, i) => `${getCandidatePath(c.name, 'male')}/gallery/${i + 1}.jpg`)
+    ],
+    initialVotes: 0, // سيتم تحديثها ديناميكياً
+    facebook: c.facebook,
+    instagram: c.instagram
+  })),
+  ...FEMALE_CANDIDATES_LIST.map(c => ({
+    id: c.name.toLowerCase().replace(/\s+/g, '-'),
+    name: c.name,
+    bio: '',
+    gender: 'female' as Gender,
+    image: `${getCandidatePath(c.name, 'female')}/main.jpg`,
+    gallery: [
+      `${getCandidatePath(c.name, 'female')}/main.jpg`,
+      ...Array.from({ length: c.galleryCount }, (_, i) => `${getCandidatePath(c.name, 'female')}/gallery/${i + 1}.jpg`)
+    ],
+    initialVotes: 0,
+    instagram: c.instagram
+  }))
 ];
 
+// 3. وظيفة جلب البيانات النصية (Bio & Votes) - استدعيها في ملف الـ Component الخاص بالبروفايل
+export async function fetchCandidateData(candidate: Candidate) {
+  const base = getCandidatePath(candidate.name, candidate.gender);
+  try {
+    const [bioRes, votesRes] = await Promise.all([
+      fetch(`${base}/bio.txt`).then(r => r.ok ? r.text() : ""),
+      fetch(`${base}/votes.txt`).then(r => r.ok ? r.text() : "0")
+    ]);
+    return {
+      bio: bioRes.trim(),
+      votes: parseInt(votesRes.trim()) || 0
+    };
+  } catch (e) {
+    return { bio: "", votes: 0 };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// منطق التصويت (تم استعادة كافة الدوال لضمان عدم حدوث خطأ Build)
+// منطق التصويت (تم استعادة الأكواد بالكامل لمنع أخطاء الـ Build)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VOTES_KEY = 'taj_votes';
@@ -82,19 +92,7 @@ const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 function getVotesMap(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   const stored = localStorage.getItem(VOTES_KEY);
-  
-  const initialMap: Record<string, number> = {};
-  candidates.forEach(c => { initialMap[c.id] = c.initialVotes; });
-
-  if (stored) {
-    const storedMap = JSON.parse(stored);
-    Object.keys(initialMap).forEach(id => {
-      if (storedMap[id] !== undefined) {
-        initialMap[id] = storedMap[id];
-      }
-    });
-  }
-  return initialMap;
+  return stored ? JSON.parse(stored) : {};
 }
 
 function saveVotesMap(votes: Record<string, number>) {
@@ -112,17 +110,13 @@ export function getAllVotes(): Record<string, number> {
 export function hasVoted(gender: Gender): boolean {
   if (typeof window === 'undefined') return false;
   const voted = localStorage.getItem(VOTED_KEY);
-  if (!voted) return false;
-  const map: Record<string, boolean> = JSON.parse(voted);
-  return !!map[gender];
+  return voted ? JSON.parse(voted)[gender] || false : false;
 }
 
 export function getVotedCandidateId(gender: Gender): string | null {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem(VOTED_CANDIDATE_KEY);
-  if (!stored) return null;
-  const map: Record<string, string> = JSON.parse(stored);
-  return map[gender] || null;
+  return stored ? JSON.parse(stored)[gender] || null : null;
 }
 
 export function castVote(candidateId: string, gender: Gender): boolean {
@@ -131,13 +125,11 @@ export function castVote(candidateId: string, gender: Gender): boolean {
   votes[candidateId] = (votes[candidateId] || 0) + 1;
   saveVotesMap(votes);
 
-  const votedStr = localStorage.getItem(VOTED_KEY);
-  const votedMap: Record<string, boolean> = votedStr ? JSON.parse(votedStr) : {};
+  const votedMap = JSON.parse(localStorage.getItem(VOTED_KEY) || '{}');
   votedMap[gender] = true;
   localStorage.setItem(VOTED_KEY, JSON.stringify(votedMap));
 
-  const candidateStr = localStorage.getItem(VOTED_CANDIDATE_KEY);
-  const candidateMap: Record<string, string> = candidateStr ? JSON.parse(candidateStr) : {};
+  const candidateMap = JSON.parse(localStorage.getItem(VOTED_CANDIDATE_KEY) || '{}');
   candidateMap[gender] = candidateId;
   localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
 
@@ -150,18 +142,14 @@ export function undoVote(gender: Gender): boolean {
   if (!candidateId) return false;
 
   const votes = getVotesMap();
-  if (votes[candidateId] && votes[candidateId] > 0) {
-    votes[candidateId] -= 1;
-  }
+  if (votes[candidateId] > 0) votes[candidateId] -= 1;
   saveVotesMap(votes);
 
-  const votedStr = localStorage.getItem(VOTED_KEY);
-  const votedMap: Record<string, boolean> = votedStr ? JSON.parse(votedStr) : {};
+  const votedMap = JSON.parse(localStorage.getItem(VOTED_KEY) || '{}');
   delete votedMap[gender];
   localStorage.setItem(VOTED_KEY, JSON.stringify(votedMap));
 
-  const candidateStr = localStorage.getItem(VOTED_CANDIDATE_KEY);
-  const candidateMap: Record<string, string> = candidateStr ? JSON.parse(candidateStr) : {};
+  const candidateMap = JSON.parse(localStorage.getItem(VOTED_CANDIDATE_KEY) || '{}');
   delete candidateMap[gender];
   localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
 
