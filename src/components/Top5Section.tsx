@@ -1,5 +1,5 @@
-import { useRef } from 'react';
-import { Candidate } from '@/lib/data';
+import { useRef, useState, useEffect } from 'react';
+import { Candidate, getVotes, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { Crown } from 'lucide-react';
 
@@ -14,8 +14,31 @@ interface Top5Props {
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  // ترتيب تنازلي حسب الأصوات
-  const sortedCandidates = [...candidates].sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0));
+  const [topCandidates, setTopCandidates] = useState<Candidate[]>(candidates);
+
+  useEffect(() => {
+    async function loadLiveVotesAndSort() {
+      try {
+        // جلب الأصوات الحية لجميع المرشحين الواردين
+        const results = await Promise.all(
+          candidates.map(async (c) => {
+            const liveVotes = await fetchLiveVotes(c.id);
+            const staticVotes = getVotes(c.id);
+            return {
+              ...c,
+              votes: staticVotes + liveVotes
+            };
+          })
+        );
+        // الفرز حسب votes تنازليًا ثم أخذ أول 5
+        const sorted = results.sort((a, b) => (b.votes || 0) - (a.votes || 0)).slice(0, 5);
+        setTopCandidates(sorted);
+      } catch (error) {
+        console.error("Error loading live votes for Top5:", error);
+      }
+    }
+    loadLiveVotesAndSort();
+  }, [candidates]);
 
   return (
     <div className="mb-2">
@@ -24,7 +47,7 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
         <h3 className="font-display text-lg font-semibold text-gold">{title} — {genderLabel}</h3>
       </div>
       <div ref={scrollRef} className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
-        {sortedCandidates.map((c, i) => (
+        {topCandidates.map((c, i) => (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
