@@ -1,13 +1,11 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId } from '@/lib/data';
+import { Candidate, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState, useEffect } from 'react'; // إضافة useEffect
+import { useState } from 'react';
 import { toast } from 'sonner';
-// استيراد دوال السيرفر
-import { fetchLiveVotes, updateLiveVote } from '@/lib/data'; 
 
 interface ProfileProps {
-  candidate: Candidate;
+  candidate: Candidate;      // يجب أن يحتوي candidate على votes محدثة
   lang: Lang;
   rank: number;
   onBack: () => void;
@@ -23,47 +21,46 @@ interface ProfileProps {
   onVoteChange: () => void;
 }
 
-export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, bioLabel, onVoteChange }: ProfileProps) {
-  const [votes, setVotes] = useState(() => getVotes(candidate.id));
-  const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
-  const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
+export function CandidateProfile({
+  candidate,
+  lang,
+  rank,
+  onBack,
+  voteLabel,
+  votedLabel,
+  votesLabel,
+  backLabel,
+  galleryLabel,
+  rankLabel,
+  alreadyVotedMsg,
+  undoLabel,
+  bioLabel,
+  onVoteChange,
+}: ProfileProps) {
   const [selectedImg, setSelectedImg] = useState(0);
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // جلب التصويتات الحية عند تحميل الصفحة
-  useEffect(() => {
-    async function loadLiveVotes() {
-      try {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        const staticVotes = getVotes(candidate.id);
-        setVotes(staticVotes + liveVotes);
-      } catch (error) {
-        console.error("Error loading live votes:", error);
-      }
-    }
-    loadLiveVotes();
-  }, [candidate.id]);
+  // حالة التصويت (محلية)
+  const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
+  const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
 
   const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
-    
     try {
       await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
-        const latestLive = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + latestLive);
         setHasVotedGender(true);
         setVotedForThis(true);
-        onVoteChange();
+        onVoteChange(); // يخبر الصفحة الأم بإعادة جلب البيانات
         toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
       }
     } catch (e) {
-      toast.error("Error connecting to server");
+      toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
     }
   };
 
@@ -72,15 +69,13 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
       await updateLiveVote(candidate.id, 'undo');
       const success = undoVote(candidate.gender);
       if (success) {
-        const latestLive = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + latestLive);
         setHasVotedGender(false);
         setVotedForThis(false);
         onVoteChange();
         toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
       }
     } catch (e) {
-      toast.error("Error connecting to server");
+      toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
     }
   };
 
@@ -98,7 +93,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* Images - نفس التنسيق الأصلي تماماً */}
+        {/* Images */}
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
             <img
@@ -108,7 +103,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
               style={{ aspectRatio: 'auto', maxHeight: '600px' }}
             />
           </div>
-          {/* Thumbnails */}
           {candidate.gallery.length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-2">
               {candidate.gallery.map((img, i) => (
@@ -141,7 +135,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
             </div>
           )}
 
-          <p className="mt-4 text-xl text-gold font-display">{votes} {votesLabel}</p>
+          <p className="mt-4 text-xl text-gold font-display">{candidate.votes ?? 0} {votesLabel}</p>
 
           <div className="mt-8 flex gap-3">
             {votedForThis ? (
@@ -187,7 +181,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
         </div>
       </div>
 
-      {/* Gallery section - نفس التنسيق الأصلي تماماً */}
       {candidate.gallery.length > 1 && (
         <div className="mt-12">
           <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
