@@ -1,46 +1,40 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { HeroSection } from '@/components/HeroSection';
 import { Top5Section } from '@/components/Top5Section';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getTop5Live, Candidate } from '@/lib/data';
+import { useVotes } from '@/context/VotesContext';
+import { candidates, getVotes } from '@/lib/data';
+import { Candidate } from '@/lib/data';
 
 const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [topMale, setTopMale] = useState<Candidate[]>([]);
-  const [topFemale, setTopFemale] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const { liveVotes, refreshLiveVotes } = useVotes();
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [male, female] = await Promise.all([
-        getTop5Live('male'),
-        getTop5Live('female'),
-      ]);
-      setTopMale(male);
-      setTopFemale(female);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // حساب top5 للمتقدمين
+  const topMale = useMemo(() => {
+    const maleCandidates = candidates.filter(c => c.gender === 'male');
+    const withVotes = maleCandidates.map(c => ({
+      ...c,
+      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
+    }));
+    return withVotes.sort((a, b) => b.votes! - a.votes!).slice(0, 5);
+  }, [liveVotes]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const topFemale = useMemo(() => {
+    const femaleCandidates = candidates.filter(c => c.gender === 'female');
+    const withVotes = femaleCandidates.map(c => ({
+      ...c,
+      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
+    }));
+    return withVotes.sort((a, b) => b.votes! - a.votes!).slice(0, 5);
+  }, [liveVotes]);
 
-  // إعادة الجلب عند التصويت
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
-  useEffect(() => {
-    if (refreshKey > 0) fetchData();
-  }, [refreshKey, fetchData]);
+  const onVoteChange = () => refreshLiveVotes();
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -62,33 +56,25 @@ const Index = () => {
 
       <section className="container py-12">
         <div className="rounded-2xl border border-gold/10 bg-card/50 p-6 shadow-xl backdrop-blur-sm md:p-8">
-          {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-            </div>
-          ) : (
-            <>
-              <Top5Section
-                key={`top5-m-${refreshKey}`}
-                title={tr('top5')}
-                genderLabel={tr('male')}
-                candidates={topMale}
-                lang={lang}
-                votesLabel={tr('votes')}
-                onSelect={(id) => navigate(`/candidate/${id}`)}
-              />
-              <div className="my-6 h-px w-full bg-gold/10" />
-              <Top5Section
-                key={`top5-f-${refreshKey}`}
-                title={tr('top5')}
-                genderLabel={tr('female')}
-                candidates={topFemale}
-                lang={lang}
-                votesLabel={tr('votes')}
-                onSelect={(id) => navigate(`/candidate/${id}`)}
-              />
-            </>
-          )}
+          <Top5Section
+            key={`top5-m-${Object.keys(liveVotes).length}`}
+            title={tr('top5')}
+            genderLabel={tr('male')}
+            candidates={topMale}
+            lang={lang}
+            votesLabel={tr('votes')}
+            onSelect={(id) => navigate(`/candidate/${id}`)}
+          />
+          <div className="my-6 h-px w-full bg-gold/10" />
+          <Top5Section
+            key={`top5-f-${Object.keys(liveVotes).length}`}
+            title={tr('top5')}
+            genderLabel={tr('female')}
+            candidates={topFemale}
+            lang={lang}
+            votesLabel={tr('votes')}
+            onSelect={(id) => navigate(`/candidate/${id}`)}
+          />
         </div>
       </section>
 
