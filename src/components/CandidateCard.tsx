@@ -1,19 +1,49 @@
-import { Candidate, getVotedCandidateId } from '@/lib/data';
+import { Candidate, getVotes, fetchLiveVotes, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { Heart, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Heart, Check, Loader2 } from 'lucide-react';
 
 interface CandidateCardProps {
   candidate: Candidate;
   lang: Lang;
-  rank: number; // الترتيب في القائمة المعروضة (يبدأ من 0)
+  rank: number;
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string, rank: number) => void;
 }
 
 export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
+  const [votes, setVotes] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
+
+  useEffect(() => {
+    async function loadLiveVotes() {
+      setLoading(true);
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+        setVotes(getVotes(candidate.id)); // fallback
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
+
+  if (loading) {
+    return (
+      <div className="group relative w-40 overflow-hidden rounded-2xl border border-gold/10 bg-card shadow-lg">
+        <div className="relative aspect-[3/4] flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-gold" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -46,7 +76,7 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
       <div className="p-4">
         <h3 className="font-display text-base font-semibold truncate">{name}</h3>
         <div className="mt-1 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">{candidate.votes ?? 0} {votesLabel}</p>
+          <p className="text-sm text-muted-foreground">{votes} {votesLabel}</p>
           {votedForThis && (
             <span className="text-xs font-semibold text-gold">{votedLabel} ✓</span>
           )}
