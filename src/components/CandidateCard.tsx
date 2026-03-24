@@ -1,7 +1,8 @@
 import { Candidate, getVotes, hasVoted, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Heart, Check } from 'lucide-react';
+import { fetchLiveVotes } from '@/lib/data';
 
 interface CandidateCardProps {
   candidate: Candidate;
@@ -13,9 +14,22 @@ interface CandidateCardProps {
 }
 
 export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
-  const [votes] = useState(() => getVotes(candidate.id));
+  const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
+
+  useEffect(() => {
+    async function loadLiveVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+      }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
 
   return (
     <div
