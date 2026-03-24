@@ -1,8 +1,7 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, hasVoted, castVote, undoVote, getVotedCandidateId } from '@/lib/data';
-import { useVotes } from '@/context/VotesContext';
+import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
 interface ProfileProps {
@@ -39,12 +38,25 @@ export function CandidateProfile({
   onVoteChange,
 }: ProfileProps) {
   const [selectedImg, setSelectedImg] = useState(0);
-  const name = candidate.name;
-  const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
-  const { updateLiveVote } = useVotes();
-
+  const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
+  const name = candidate.name;
+  const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
+
+  // جلب الأصوات الحية عند تحميل المكون
+  useEffect(() => {
+    async function loadLiveVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+      }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
 
   const handleVote = async () => {
     if (hasVotedGender) {
@@ -55,6 +67,8 @@ export function CandidateProfile({
       await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + liveVotes);
         setHasVotedGender(true);
         setVotedForThis(true);
         onVoteChange();
@@ -70,6 +84,8 @@ export function CandidateProfile({
       await updateLiveVote(candidate.id, 'undo');
       const success = undoVote(candidate.gender);
       if (success) {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + liveVotes);
         setHasVotedGender(false);
         setVotedForThis(false);
         onVoteChange();
@@ -136,7 +152,7 @@ export function CandidateProfile({
             </div>
           )}
 
-          <p className="mt-4 text-xl text-gold font-display">{candidate.votes ?? 0} {votesLabel}</p>
+          <p className="mt-4 text-xl text-gold font-display">{votes} {votesLabel}</p>
 
           <div className="mt-8 flex gap-3">
             {votedForThis ? (
