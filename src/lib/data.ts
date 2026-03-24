@@ -70,9 +70,7 @@ function buildCandidates(): Candidate[] {
     const mainImg = mainImages[path];
 
     results.push({
-      // الحل الجذري: الـ ID سيحتوي على الاسم العربي كما هو بدون encodeURIComponent
-      // المتصفح سيقوم بتشفيره في الرابط تلقائياً، لكننا سنقارنه كـ نص صافي
-      id: `${info.gender[0]}-${folderName}`,
+      id: `${info.gender[0]}-${folderName}`, // ID صافي يدعم العربي والشرطات
       name: folderName.replace(/-/g, ' '), 
       bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
       gender: info.gender,
@@ -88,7 +86,7 @@ function buildCandidates(): Candidate[] {
 
 export const candidates: Candidate[] = buildCandidates();
 
-/* ── Votes ── */
+/* ── Votes Mapping ── */
 const votesMap: Record<string, number> = (() => {
   const map: Record<string, number> = {};
   candidates.forEach(c => {
@@ -100,7 +98,7 @@ const votesMap: Record<string, number> = (() => {
   return map;
 })();
 
-/* ── Utilities ── */
+/* ── Exported Functions ── */
 
 export function getVotes(candidateId: string): number {
   return votesMap[candidateId] || 0;
@@ -110,20 +108,12 @@ export function getAllVotes(): Record<string, number> {
   return { ...votesMap };
 }
 
-// دالة جلب المرشح المعدلة لضمان مطابقة الروابط العربية
 export function getCandidateById(id: string | undefined): Candidate | undefined {
   if (!id) return undefined;
-  
-  // نقوم بفك تشفير الـ ID القادم من الرابط ومقارنته بـ ID المرشح
   const targetId = decodeURIComponent(id);
-  
-  return candidates.find(c => {
-    const candidateId = c.id; // أصلاً غير مشفر الآن في buildCandidates
-    return candidateId === targetId || decodeURIComponent(candidateId) === targetId;
-  });
+  return candidates.find(c => c.id === targetId || decodeURIComponent(c.id) === targetId);
 }
 
-// باقي الدوال (hasVoted, castVote, الخ)
 export function hasVoted(gender: Gender): boolean {
   try {
     const voted = localStorage.getItem('taj_voted');
@@ -167,4 +157,9 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
   return [...candidates]
     .filter(c => c.gender === gender)
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
+}
+
+// هذه هي الدالة التي كانت مفقودة وتسببت في فشل الـ Build
+export function getTop5(gender: Gender): Candidate[] {
+  return getCandidatesSorted(gender).slice(0, 5);
 }
