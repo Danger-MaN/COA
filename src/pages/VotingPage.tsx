@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react'; // أضفنا useEffect
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesSorted, Gender, hasVoted, getVotedCandidateId } from '@/lib/data';
+import { getCandidatesSorted, Gender, fetchLiveVotes } from '@/lib/data'; // استيراد fetchLiveVotes
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 
 const VotingPage = () => {
@@ -13,11 +13,31 @@ const VotingPage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isLoading, setIsLoading] = useState(true); // حالة التحميل
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await fetchLiveVotes();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    init();
+  }, []);
 
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const sorted = getCandidatesSorted(validGender);
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -32,10 +52,7 @@ const VotingPage = () => {
       />
 
       <div className="container py-8">
-        <button
-          onClick={() => navigate('/select')}
-          className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]"
-        >
+        <button onClick={() => navigate('/select')} className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
           <BackArrow className="h-4 w-4" />
           <span>{tr('backHome')}</span>
         </button>
@@ -46,7 +63,6 @@ const VotingPage = () => {
           </h2>
         </div>
 
-        {/* Voting notice */}
         <div className="mb-8 flex items-center gap-3 rounded-xl border border-gold/20 bg-gold/5 px-5 py-3.5">
           <AlertTriangle className="h-5 w-5 flex-shrink-0 text-gold" />
           <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
@@ -68,8 +84,8 @@ const VotingPage = () => {
       </div>
 
       <footer className="border-t border-gold/20 py-8">
-        <div className="container text-center">
-          <a href="https://www.facebook.com/groups/EGY.Model" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground font-display transition-colors hover:text-gold">{tr('footer')}</a>
+        <div className="container text-center text-sm text-muted-foreground italic">
+          AUREUS © 2026
         </div>
       </footer>
     </div>
