@@ -27,10 +27,10 @@ const AdminPage = () => {
     }
     setLoading(true);
     try {
-      const res = await fetch('/.netlify/functions/admin-vote', {
+      const res = await fetch(`/.netlify/functions/vote-api?id=${candidateId}&action=set`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidateId, votes: parseInt(votes, 10), password })
+        body: JSON.stringify({ value: parseInt(votes, 10), password })
       });
       const data = await res.json();
       if (res.ok) {
