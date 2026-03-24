@@ -10,9 +10,18 @@ interface Top5Props {
   lang: Lang;
   votesLabel: string;
   onSelect: (id: string, rank: number) => void;
+  limit?: number; // عدد المرشحين المراد عرضهم (افتراضي 5)
 }
 
-export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
+export function Top5Section({
+  title,
+  genderLabel,
+  candidates,
+  lang,
+  votesLabel,
+  onSelect,
+  limit = 5,
+}: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [topCandidates, setTopCandidates] = useState<Candidate[]>(candidates);
   const [rankMap, setRankMap] = useState<Map<string, number>>(new Map());
@@ -26,20 +35,14 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
           candidates.map(async (c) => {
             const liveVotes = await fetchLiveVotes(c.id);
             const staticVotes = getVotes(c.id);
-            return {
-              ...c,
-              votes: staticVotes + liveVotes
-            };
+            return { ...c, votes: staticVotes + liveVotes };
           })
         );
-        // الترتيب الكامل
         const sorted = results.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-        // حفظ الترتيب لكل مرشح
         const newRankMap = new Map<string, number>();
         sorted.forEach((c, idx) => newRankMap.set(c.id, idx + 1));
         setRankMap(newRankMap);
-        // أخذ أول 5 للعرض
-        setTopCandidates(sorted.slice(0, 5));
+        setTopCandidates(sorted.slice(0, limit));
       } catch (error) {
         console.error("Error loading live votes for Top5:", error);
       } finally {
@@ -47,7 +50,7 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
       }
     }
     loadLiveVotesAndSort();
-  }, [candidates]);
+  }, [candidates, limit]);
 
   if (loading) {
     return (
