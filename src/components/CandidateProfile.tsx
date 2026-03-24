@@ -1,5 +1,5 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, fetchLiveVotes, castVote, undoVote, getVotedCandidateId, hasVoted, updateLiveVote, getVotes } from '@/lib/data';
+import { Candidate, castVote, undoVote, getVotedCandidateId, hasVoted } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -18,109 +18,154 @@ interface ProfileProps {
   alreadyVotedMsg: string;
   undoLabel: string;
   bioLabel: string;
-  onVoteChange: () => void;
+  onVoteChange: () => void; // دالة لتحديث البيانات في الصفحة الأب (Parent)
 }
 
-export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, bioLabel, onVoteChange }: ProfileProps) {
-  // المجموع = الثابت (ملف) + الحي (سيرفر)
-  const [liveVotes, setLiveVotes] = useState(0);
-  const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
-  const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
+export function CandidateProfile({ 
+  candidate, lang, rank, onBack, voteLabel, votedLabel, 
+  votesLabel, backLabel, galleryLabel, rankLabel, 
+  alreadyVotedMsg, undoLabel, bioLabel, onVoteChange 
+}: ProfileProps) {
+  
+  // 1. استخدام State محلي يتحدث فورياً عند التفاعل (Optimistic Update)
+  const [votes, setVotes] = useState(candidate.votes || 0);
+  const [isVotedForThis, setIsVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [selectedImg, setSelectedImg] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false);
 
-  const name = candidate.name;
-  const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
-  const staticVotes = getVotes(candidate.id);
-
-  // جلب أصوات السيرفر فور تحميل الصفحة
+  // 2. مزامنة الحالة مع البيانات القادمة من السيرفر عند تغيير المتسابق
   useEffect(() => {
-    fetchLiveVotes(candidate.id).then(setLiveVotes);
-  }, [candidate.id]);
+    setVotes(candidate.votes || 0);
+    setIsVotedForThis(getVotedCandidateId(candidate.gender) === candidate.id);
+  }, [candidate]);
 
+  // 3. دالة التصويت (تعتمد على السيرفر)
   const handleVote = async () => {
-    if (hasVotedGender) {
+    if (hasVoted(candidate.gender)) {
       toast.error(alreadyVotedMsg);
       return;
     }
+
+    // تحديث واجهة المستخدم فوراً ليشعر المستخدم بالسرعة (Optimistic UI)
+    setVotes(prev => prev + 1);
+    setIsVotedForThis(true);
+
+    const success = await castVote(candidate.id, candidate.gender);
     
-    setIsSyncing(true);
-    // 1. التحديث محلياً (LocalStorage)
-    const localSuccess = castVote(candidate.id, candidate.gender);
-    
-    if (localSuccess) {
-      // 2. التحديث في السيرفر (Netlify Blobs)
-      const newServerTotal = await updateLiveVote(candidate.id, 'vote');
-      setLiveVotes(newServerTotal);
-      setHasVotedGender(true);
-      setVotedForThis(true);
-      onVoteChange();
-      toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+    if (success) {
+      toast.success(votedLabel);
+      onVoteChange(); // إبلاغ الصفحة الرئيسية بضرورة إعادة جلب البيانات لترتيب المتسابقين
+    } else {
+      // إذا فشل الاتصال بالسيرفر، نتراجع عن الزيادة الوهمية
+      setVotes(prev => prev - 1);
+      setIsVotedForThis(false);
+      toast.error(lang === 'ar' ? 'حدث خطأ أثناء التصويت' : 'Error casting vote');
     }
-    setIsSyncing(false);
   };
 
+  // 4. دالة التراجع عن التصويت (تعتمد على السيرفر)
   const handleUndo = async () => {
-    setIsSyncing(true);
-    const localSuccess = undoVote(candidate.gender);
-    if (localSuccess) {
-      const newServerTotal = await updateLiveVote(candidate.id, 'undo');
-      setLiveVotes(newServerTotal);
-      setHasVotedGender(false);
-      setVotedForThis(false);
-      onVoteChange();
+    // تحديث واجهة المستخدم فوراً ليشعر المستخدم بالسرعة (Optimistic UI)
+    setVotes(prev => Math.max(0, prev - 1));
+    setIsVotedForThis(false);
+
+    const success = await undoVote(candidate.id, candidate.gender);
+    
+    if (success) {
       toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      onVoteChange();
+    } else {
+      // تراجع عن التغيير في حالة الفشل
+      setVotes(prev => prev + 1);
+      setIsVotedForThis(true);
+      toast.error(lang === 'ar' ? 'حدث خطأ أثناء إلغاء التصويت' : 'Error undoing vote');
     }
-    setIsSyncing(false);
   };
 
-  const socials = [
-    { icon: Facebook, url: candidate.facebook, label: 'Facebook' },
-    { icon: Twitter, url: candidate.twitter, label: 'Twitter' },
-    { icon: Instagram, url: candidate.instagram, label: 'Instagram' },
-  ].filter(s => s.url);
+  const name = candidate.name;
+  const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
+
+  // إعدادات معرض الصور
+  const galleryImages = candidate.gallery && candidate.gallery.length > 0 
+    ? candidate.gallery 
+    : [candidate.image]; // استخدام الصورة الرئيسية إذا لم تكن هناك صور في المعرض
 
   return (
-    <div className="container max-w-5xl py-8 animate-fade-up">
-      <button onClick={onBack} className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]">
-        <BackArrow className="h-4 w-4" />
-        <span>{backLabel}</span>
+    <div className="container py-8">
+      {/* زر العودة */}
+      <button onClick={onBack} className="mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+        <BackArrow className="h-5 w-5" />
+        <span className="font-medium">{backLabel}</span>
       </button>
 
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* Images القسم كما هو */}
-        <div className="space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
-            <img src={candidate.gallery[selectedImg] || candidate.image} alt={name} className="w-full object-cover object-center" style={{ maxHeight: '600px' }} />
+      <div className="grid gap-12 lg:grid-cols-2">
+        {/* قسم الصورة الرئيسية والمعرض */}
+        <div className="space-y-6">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl animate-in fade-in duration-700">
+            <img 
+              src={galleryImages[selectedImg]} 
+              alt={name} 
+              className="h-full w-full object-cover object-center transition-all duration-500" 
+            />
           </div>
+          
+          {/* معرض الصور المصغرة (Gallery Thumbnails) */}
+          {galleryImages.length > 1 && (
+            <div>
+              <h4 className="mb-3 text-sm font-semibold text-muted-foreground">{galleryLabel}</h4>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                {galleryImages.map((img, index) => (
+                  <button 
+                    key={index} 
+                    onClick={() => setSelectedImg(index)}
+                    className={`relative w-20 aspect-[3/4] flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${selectedImg === index ? 'border-gold shadow-lg ring-2 ring-gold/20' : 'border-gold/10 hover:border-gold/30'}`}
+                  >
+                    <img src={img} alt={`${name} gallery ${index + 1}`} className="h-full w-full object-cover object-center" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Info القسم المعدل */}
-        <div className="flex flex-col justify-center">
-          <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{rank + 1}</span>
-            <span className="text-sm text-muted-foreground">{rankLabel} #{rank + 1}</span>
+        {/* قسم البيانات والزر */}
+        <div className="flex flex-col justify-center space-y-8">
+          <div>
+            <div className="mb-2 flex items-center gap-3">
+              <span className="rounded-full bg-gold/10 px-4 py-1 text-sm font-bold text-gold border border-gold/20">
+                {rankLabel} #{rank + 1}
+              </span>
+              <span className="text-sm font-medium text-muted-foreground">
+                {votes.toLocaleString()} {votesLabel}
+              </span>
+            </div>
+            <h2 className="font-display text-5xl font-bold leading-tight">{name}</h2>
           </div>
-          <h2 className="font-display text-3xl font-bold md:text-4xl lg:text-5xl">{name}</h2>
 
-          {/* عرض المجموع الكلي (ثابت + حي) */}
-          <p className="mt-4 text-xl text-gold font-display">
-            {staticVotes + liveVotes} {votesLabel}
-          </p>
+          <div className="rounded-2xl border border-gold/10 bg-card/50 p-6 backdrop-blur-sm">
+            <h3 className="mb-3 font-display text-lg font-semibold text-gold">{bioLabel}</h3>
+            <p className="text-lg leading-relaxed text-muted-foreground italic">"{candidate.bio[lang]}"</p>
+          </div>
 
-          <div className="mt-8 flex gap-3">
-            {votedForThis ? (
-              <button onClick={handleUndo} disabled={isSyncing} className="flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-8 py-3.5 font-semibold text-destructive transition-all">
-                <Undo2 className="h-5 w-5" /> {undoLabel}
+          {/* أزرار التفاعل المعتمدة على السيرفر */}
+          <div className="flex flex-wrap gap-4">
+            {isVotedForThis ? (
+              <button 
+                onClick={handleUndo} 
+                className="flex flex-1 items-center justify-center gap-3 rounded-2xl border-2 border-gold/50 bg-transparent py-4 font-display text-xl font-bold text-gold transition-all hover:bg-gold/5 active:scale-95"
+              >
+                <Undo2 className="h-6 w-6" />
+                {undoLabel}
               </button>
             ) : (
-              <button onClick={handleVote} disabled={hasVotedGender || isSyncing} className={`flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 font-semibold transition-all ${hasVotedGender ? 'bg-muted text-muted-foreground' : 'gold-gradient text-primary-foreground shadow-lg'}`}>
-                <Heart className={`h-5 w-5 ${hasVotedGender ? '' : 'fill-current'}`} />
-                {hasVotedGender ? votedLabel : voteLabel}
+              <button 
+                onClick={handleVote} 
+                className="gold-gradient flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 font-display text-xl font-bold text-primary-foreground shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Heart className="h-6 w-6" />
+                {voteLabel}
               </button>
             )}
           </div>
-          {/* Socials ... */}
         </div>
       </div>
     </div>
