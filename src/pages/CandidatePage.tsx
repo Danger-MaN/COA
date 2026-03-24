@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateProfile } from '@/components/CandidateProfile';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { candidates, getCandidatesSorted } from '@/lib/data';
+import { candidates, getCandidatesLive, getTotalVotes, Candidate } from '@/lib/data';
 
 const CandidatePage = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,16 +12,59 @@ const CandidatePage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [candidateWithVotes, setCandidateWithVotes] = useState<Candidate | null>(null);
+  const [rank, setRank] = useState<number>(-1);
+  const [loading, setLoading] = useState(true);
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  const candidate = candidates.find(c => c.id === id);
-  if (!candidate) {
-    navigate('/');
-    return null;
+  const fetchData = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    try {
+      // جلب المرشح الأساسي من القائمة الثابتة (معلوماته الأساسية)
+      const baseCandidate = candidates.find(c => c.id === id);
+      if (!baseCandidate) {
+        navigate('/');
+        return;
+      }
+
+      // جلب جميع مرشحي نفس الجنس مع الأصوات الحية لتحديد الترتيب
+      const liveCandidates = await getCandidatesLive(baseCandidate.gender);
+      const found = liveCandidates.find(c => c.id === id);
+      if (found) {
+        setCandidateWithVotes(found);
+        const index = liveCandidates.findIndex(c => c.id === id);
+        setRank(index);
+      } else {
+        // إذا لم يوجد، نضيف votes مؤقتة
+        const totalVotes = await getTotalVotes(id);
+        setCandidateWithVotes({ ...baseCandidate, votes: totalVotes });
+        setRank(-1);
+      }
+    } catch (error) {
+      console.error('Error fetching candidate data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [id, navigate]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (refreshKey > 0) fetchData();
+  }, [refreshKey, fetchData]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen marble-texture flex items-center justify-center" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+      </div>
+    );
   }
 
-  const sorted = getCandidatesSorted(candidate.gender);
-  const rankMap = Object.fromEntries(sorted.map((c, i) => [c.id, i]));
+  if (!candidateWithVotes) return null;
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -36,10 +79,10 @@ const CandidatePage = () => {
       />
       <CandidateProfile
         key={`${id}-${refreshKey}`}
-        candidate={candidate}
+        candidate={candidateWithVotes}
         lang={lang}
-        rank={rankMap[candidate.id]}
-        onBack={() => navigate(`/vote/${candidate.gender}`)}
+        rank={rank}
+        onBack={() => navigate(`/vote/${candidateWithVotes.gender}`)}
         voteLabel={tr('vote')}
         votedLabel={tr('voted')}
         votesLabel={tr('votes')}
