@@ -29,14 +29,21 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  const handleVote = () => {
+  // داخل مكون CandidateProfile
+  // استبدل handleVote و handleUndo بالتالي:
+
+  const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
+
+    // تحديث السيرفر أولاً
+    const newCount = await updateLiveVote(candidate.id, 'vote');
+  
     const success = castVote(candidate.id, candidate.gender);
     if (success) {
-      setVotes(prev => prev + 1);
+      setVotes(getVotes(candidate.id) + newCount); // دمج القيمة الثابتة مع الحية
       setHasVotedGender(true);
       setVotedForThis(true);
       onVoteChange();
@@ -44,16 +51,20 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
     }
   };
 
-  const handleUndo = () => {
+  const handleUndo = async () => {
+    // تحديث السيرفر أولاً
+    const newCount = await updateLiveVote(candidate.id, 'undo');
+
     const success = undoVote(candidate.gender);
     if (success) {
-      setVotes(getVotes(candidate.id));
+      setVotes(getVotes(candidate.id) + newCount);
       setHasVotedGender(false);
       setVotedForThis(false);
       onVoteChange();
-      toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+     toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
     }
   };
+
 
   const socials = [
     { icon: Facebook, url: candidate.facebook, label: 'Facebook' },
