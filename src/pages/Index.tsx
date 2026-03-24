@@ -44,8 +44,24 @@ const Index = () => {
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
-      <Header ... />
-      <HeroSection ... />
+      <Header
+        siteName={tr('siteName')}
+        isDark={isDark}
+        toggleTheme={toggleTheme}
+        lang={lang}
+        toggleLang={toggleLang}
+        darkModeLabel={tr('darkMode')}
+        lightModeLabel={tr('lightMode')}
+      />
+
+      <HeroSection
+        siteName={tr('siteName')}
+        tagline={tr('tagline')}
+        ctaText={tr('startVoting')}
+        onCtaClick={() => navigate('/select')}
+      />
+
+      {/* Top 5 Section */}
       <section className="container py-12">
         <div className="rounded-2xl border border-gold/10 bg-card/50 p-6 shadow-xl backdrop-blur-sm md:p-8">
           {!loading && (
@@ -71,10 +87,27 @@ const Index = () => {
               />
             </>
           )}
-          {loading && <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" /></div>}
+          {loading && (
+            <div className="flex justify-center py-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+            </div>
+          )}
         </div>
       </section>
-      <footer ... />
+
+      {/* Footer */}
+      <footer className="border-t border-gold/20 py-8">
+        <div className="container text-center">
+          <a
+            href="https://www.facebook.com/groups/EGY.Model"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground font-display transition-colors hover:text-gold"
+          >
+            {tr('footer')}
+          </a>
+        </div>
+      </footer>
     </div>
   );
 };
