@@ -13,24 +13,14 @@ const VotingPage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchLiveVotes().finally(() => setLoading(false));
+    fetchLiveVotes().then(() => setRefreshKey(k => k + 1));
   }, []);
 
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const sorted = getCandidatesSorted(validGender);
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-gold border-t-transparent" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -45,7 +35,10 @@ const VotingPage = () => {
       />
 
       <div className="container py-8">
-        <button onClick={() => navigate('/select')} className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+        <button 
+          onClick={() => navigate('/select')}
+          className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold"
+        >
           <BackArrow className="h-4 w-4" />
           <span>{tr('backHome')}</span>
         </button>
@@ -77,8 +70,10 @@ const VotingPage = () => {
       </div>
 
       <footer className="border-t border-gold/20 py-8">
-        <div className="container text-center text-sm text-muted-foreground italic">
-          AUREUS © 2026
+        <div className="container text-center">
+          <a href="https://www.facebook.com/groups/EGY.Model" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-gold transition-colors">
+            © 2026 EGY Model. All rights reserved.
+          </a>
         </div>
       </footer>
     </div>
