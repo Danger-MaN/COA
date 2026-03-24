@@ -20,6 +20,7 @@ export function LiveVotesProvider({ children }: { children: ReactNode }) {
       setLiveVotes(votes);
     } catch (error) {
       console.error('Failed to fetch live votes:', error);
+      setLiveVotes({}); // ضمان وجود كائن فارغ
     } finally {
       setIsLoading(false);
     }
