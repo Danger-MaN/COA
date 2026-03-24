@@ -36,7 +36,6 @@ export function CandidateProfile({
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // تحديث البيانات عند فتح الملف الشخصي لضمان دقة الأرقام
   useEffect(() => {
     fetchLiveVotes().then(() => {
       setVotes(getVotes(candidate.id));
@@ -68,82 +67,82 @@ export function CandidateProfile({
   ].filter(s => s.url);
 
   return (
-    <div className=\"container py-8 md:py-12\">
+    <div className="container py-8 md:py-12">
       <button 
         onClick={onBack}
-        className=\"mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold\"
+        className="mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold"
       >
-        <BackArrow className=\"h-4 w-4\" />
+        <BackArrow className="h-4 w-4" />
         <span>{backLabel}</span>
       </button>
 
-      <div className=\"grid gap-8 lg:grid-cols-12\">
+      <div className="grid gap-8 lg:grid-cols-12">
         {/* Main Image View */}
-        <div className=\"lg:col-span-5\">
-          <div className=\"relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl\">
+        <div className="lg:col-span-5">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl">
             <img 
               src={candidate.gallery[selectedImg]} 
               alt={name} 
-              className=\"h-full w-full object-cover object-center transition-all duration-700\"
+              className="h-full w-full object-cover object-center transition-all duration-700"
             />
-            <div className=\"absolute top-4 start-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md text-lg font-bold text-gold border border-gold/20 shadow-xl\">
+            <div className="absolute top-4 start-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md text-lg font-bold text-gold border border-gold/20 shadow-xl">
               #{rank + 1}
             </div>
           </div>
         </div>
 
         {/* Content Details */}
-        <div className=\"lg:col-span-7 flex flex-col\">
-          <div className=\"mb-6\">
-            <h2 className=\"font-display text-4xl font-bold md:text-5xl\">{name}</h2>
-            <div className=\"mt-4 flex flex-wrap items-center gap-6\">
-              <div className=\"flex flex-col\">
-                <span className=\"text-xs uppercase tracking-widest text-muted-foreground\">{votesLabel}</span>
-                <span className=\"text-2xl font-bold gold-text-gradient\">{votes}</span>
+        <div className="lg:col-span-7 flex flex-col">
+          <div className="mb-6">
+            <h2 className="font-display text-4xl font-bold md:text-5xl">{name}</h2>
+            <div className="mt-4 flex flex-wrap items-center gap-6">
+              <div className="flex flex-col">
+                <span className="text-xs uppercase tracking-widest text-muted-foreground">{votesLabel}</span>
+                <span className="text-2xl font-bold gold-text-gradient">{votes}</span>
               </div>
-              <div className=\"h-10 w-px bg-gold/20\" />
-              <div className=\"flex flex-col\">
-                <span className=\"text-xs uppercase tracking-widest text-muted-foreground\">{rankLabel}</span>
-                <span className=\"text-2xl font-bold\">#{rank + 1}</span>
+              <div className="h-10 w-px bg-gold/20" />
+              <div className="flex flex-col">
+                <span className="text-xs uppercase tracking-widest text-muted-foreground">{rankLabel}</span>
+                <span className="text-2xl font-bold">#{rank + 1}</span>
               </div>
             </div>
           </div>
 
-          <div className=\"mb-8 rounded-2xl border border-gold/10 bg-gold/5 p-6 backdrop-blur-sm\">
-            <h3 className=\"mb-3 flex items-center gap-2 font-display text-lg font-semibold\">
-              <span className=\"h-1.5 w-1.5 rounded-full bg-gold\" />
+          <div className="mb-8 rounded-2xl border border-gold/10 bg-gold/5 p-6 backdrop-blur-sm">
+            <h3 className="mb-3 flex items-center gap-2 font-display text-lg font-semibold">
+              <span className="h-1.5 w-1.5 rounded-full bg-gold" />
               {bioLabel}
             </h3>
-            <p className=\"leading-relaxed text-muted-foreground whitespace-pre-line\">{candidate.bio}</p>
+            <p className="leading-relaxed text-muted-foreground whitespace-pre-line">{candidate.bio}</p>
           </div>
 
-          <div className=\"mt-auto space-y-6\">
+          <div className="mt-auto space-y-6">
             <button
               onClick={handleVote}
               disabled={hasVotedGender || isVoting}
               className={`group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-4 font-bold transition-all duration-500 ${
                 hasVotedGender 
-                  ? 'cursor-not-allowed bg-muted text-muted-foreground' 
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed' 
                   : 'gold-gradient text-primary-foreground shadow-lg shadow-gold/20 hover:scale-[1.02] hover:shadow-gold/40 active:scale-[0.98]'
               }`}
             >
               <Heart className={`h-5 w-5 ${votedForThis ? 'fill-current' : ''} ${isVoting ? 'animate-pulse' : ''}`} />
-              <span className=\"relative z-10\">
+              <span className="relative z-10">
                 {isVoting ? '...' : (votedForThis ? votedLabel : (hasVotedGender ? alreadyVotedMsg : voteLabel))}
               </span>
             </button>
 
             {socials.length > 0 && (
-              <div className=\"flex items-center gap-4\">
+              <div className="flex items-center gap-4">
                 {socials.map(({ icon: Icon, url, label }) => (
                   <a
                     key={label}
                     href={url}
-                    target=\"_blank\"
-                    rel=\"noopener noreferrer\"
-                    className=\"flex h-12 w-12 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5\"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-12 w-12 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5"
                   >
-                    <Icon className=\"h-5 w-5\" />
+                    <Icon className="h-5 w-5" />
                   </a>
                 ))}
               </div>
@@ -154,9 +153,9 @@ export function CandidateProfile({
 
       {/* Gallery */}
       {candidate.gallery.length > 1 && (
-        <div className=\"mt-16\">
-          <h3 className=\"mb-8 font-display text-2xl font-bold\">{galleryLabel}</h3>
-          <div className=\"grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5\">
+        <div className="mt-16">
+          <h3 className="mb-8 font-display text-2xl font-bold">{galleryLabel}</h3>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {candidate.gallery.map((img, i) => (
               <button
                 key={i}
@@ -165,7 +164,7 @@ export function CandidateProfile({
                   selectedImg === i ? 'border-gold ring-2 ring-gold/20' : 'border-gold/10 hover:border-gold/40'
                 }`}
               >
-                <img src={img} alt=\"gallery\" className=\"aspect-square w-full object-cover\" />
+                <img src={img} alt="gallery" className="aspect-square w-full object-cover" />
               </button>
             ))}
           </div>
