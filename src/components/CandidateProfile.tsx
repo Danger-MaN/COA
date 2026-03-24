@@ -1,5 +1,5 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote, fetchLiveVotes } from '@/lib/data';
+import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -49,8 +49,7 @@ export function CandidateProfile({
     async function loadLiveVotes() {
       try {
         const liveVotes = await fetchLiveVotes(candidate.id);
-        const staticVotes = getVotes(candidate.id);
-        setVotes(staticVotes + liveVotes);
+        setVotes(getVotes(candidate.id) + liveVotes);
       } catch (error) {
         console.error("Error loading live votes:", error);
       }
@@ -64,11 +63,11 @@ export function CandidateProfile({
       return;
     }
     try {
-      await updateLiveVote(candidate.id, 'vote');
+      // تحديث السيرفر والحصول على العدد الجديد للأصوات الحية مباشرة
+      const newLiveVotes = await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + liveVotes);
+        setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(true);
         setVotedForThis(true);
         onVoteChange();
@@ -81,11 +80,10 @@ export function CandidateProfile({
 
   const handleUndo = async () => {
     try {
-      await updateLiveVote(candidate.id, 'undo');
+      const newLiveVotes = await updateLiveVote(candidate.id, 'undo');
       const success = undoVote(candidate.gender);
       if (success) {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + liveVotes);
+        setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(false);
         setVotedForThis(false);
         onVoteChange();
