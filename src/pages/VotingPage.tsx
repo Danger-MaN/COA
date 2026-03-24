@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesWithLive, Gender, Candidate } from '@/lib/data';
+import { getCandidatesSorted, getCandidatesWithLive, Gender, Candidate } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
@@ -13,31 +13,24 @@ const VotingPage = () => {
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { liveVotes, refreshLiveVotes, isLoading: liveLoading } = useLiveVotes();
+  const { liveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-
-  const onVoteChange = useCallback(() => {
-    refreshLiveVotes();
-    setRefreshKey(k => k + 1);
-  }, [refreshLiveVotes]);
+  const [candidates, setCandidates] = useState<Candidate[]>(() => {
+    const validGender: Gender = gender === 'female' ? 'female' : 'male';
+    return getCandidatesSorted(validGender);
+  });
 
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
+  // تحديث القائمة عند تحميل الأصوات الحية
   useEffect(() => {
-    if (!liveLoading && Object.keys(liveVotes).length > 0) {
-      setCandidates(getCandidatesWithLive(validGender, liveVotes));
+    if (!liveLoading) {
+      const updated = getCandidatesWithLive(validGender, liveVotes);
+      setCandidates(updated);
+      setRefreshKey(k => k + 1);
     }
   }, [liveVotes, liveLoading, validGender]);
-
-  if (liveLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
