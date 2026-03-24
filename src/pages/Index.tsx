@@ -5,29 +5,34 @@ import { HeroSection } from '@/components/HeroSection';
 import { Top5Section } from '@/components/Top5Section';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getTop5Live, Candidate } from '@/lib/data';
+import { getTop5Live, Candidate } from '@/lib/data'; // استيراد الدالة الحية
 
 const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
+  
+  // تعريف حالات (States) لتخزين البيانات القادمة من السيرفر
   const [maleTop5, setMaleTop5] = useState<Candidate[]>([]);
   const [femaleTop5, setFemaleTop5] = useState<Candidate[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const navigate = useNavigate();
-
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
+  // جلب البيانات عند فتح الصفحة أو عند حدوث تصويت
   useEffect(() => {
-    // جلب البيانات الحية (ملفات + سيرفر) وترتيبها
-    const loadStats = async () => {
+    async function loadData() {
+      setIsLoading(true);
       const [males, females] = await Promise.all([
         getTop5Live('male'),
         getTop5Live('female')
       ]);
       setMaleTop5(males);
       setFemaleTop5(females);
-    };
-    loadStats();
+      setIsLoading(false);
+    }
+    loadData();
   }, [refreshKey]);
 
   return (
@@ -41,7 +46,7 @@ const Index = () => {
             key={`top5-m-${refreshKey}`}
             title={tr('top5')}
             genderLabel={tr('male')}
-            candidates={maleTop5}
+            candidates={maleTop5} // نمرر البيانات من الـ State وليس من الدالة مباشرة
             lang={lang}
             votesLabel={tr('votes')}
             onSelect={(id) => navigate(`/candidate/${id}`)}
@@ -51,7 +56,7 @@ const Index = () => {
             key={`top5-f-${refreshKey}`}
             title={tr('top5')}
             genderLabel={tr('female')}
-            candidates={femaleTop5}
+            candidates={femaleTop5} // نمرر البيانات من الـ State
             lang={lang}
             votesLabel={tr('votes')}
             onSelect={(id) => navigate(`/candidate/${id}`)}
