@@ -1,4 +1,4 @@
-import { Candidate, getVotedCandidateId, getVotes } from '@/lib/data'; // تأكد من استيراد getVotes
+import { Candidate, getVotedCandidateId, getVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { Heart, Check } from 'lucide-react';
@@ -10,19 +10,21 @@ interface CandidateCardProps {
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string) => void;
+  // أضفنا هذا الـ Prop لضمان إعادة الصيرورة عند تحديث البيانات عالمياً
+  refreshKey?: number; 
 }
 
-export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
-  // 1. استرجاع القيمة الابتدائية من الدالة المسؤولة عن قراءة الملف النصي/السيرفر
+export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, refreshKey }: CandidateCardProps) {
+  // الاعتماد على getVotes لجلب القيمة الأحدث سواء من الملف أو السيرفر المحدث
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
 
-  // 2. تحديث الأصوات عند تغيير البروبس (Props) القادم من الصفحة الأب
+  // تحديث القيمة المحلية فور تغير الـ refreshKey أو بيانات المتسابق
   useEffect(() => {
     setVotes(getVotes(candidate.id));
-  }, [candidate.id, candidate.votes]);
+  }, [candidate.id, refreshKey, candidate.votes]);
 
   return (
     <div
