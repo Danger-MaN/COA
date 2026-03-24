@@ -3,7 +3,7 @@ import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId 
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react'; // أضفنا useEffect هنا
 import { toast } from 'sonner';
-// استيراد الدوال الخاصة بالربط مع السيرفر
+// استيراد دوال الربط مع السيرفر (تأكد من وجودها في data.ts)
 import { fetchLiveVotes, updateLiveVote } from '@/lib/data'; 
 
 interface ProfileProps {
@@ -31,57 +31,62 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // --- تعديل التصويت: جلب الأصوات الحية عند تحميل الصفحة ---
+  // --- الجزء المسؤول عن إظهار التصويتات الحديثة ---
   useEffect(() => {
-    async function loadVotes() {
+    async function loadLiveVotes() {
       try {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        const staticVotes = getVotes(candidate.id);
-        setVotes(staticVotes + liveVotes);
+        const liveVotes = await fetchLiveVotes(candidate.id); // جلب الأصوات من السيرفر
+        const staticVotes = getVotes(candidate.id); // جلب الأصوات الثابتة من الملف
+        setVotes(staticVotes + liveVotes); // تحديث العداد بالمجموع الفعلي
       } catch (error) {
-        console.error("Error fetching votes:", error);
+        console.error("Failed to load live votes:", error);
       }
     }
-    loadVotes();
+    loadLiveVotes();
   }, [candidate.id]);
 
-  // --- تعديل التصويت: تحديث السيرفر عند الضغط ---
   const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
     
-    // تحديث السيرفر أولاً
-    await updateLiveVote(candidate.id, 'vote');
-
-    const success = castVote(candidate.id, candidate.gender);
-    if (success) {
-      // إعادة جلب المجموع المحدث
-      const latestLive = await fetchLiveVotes(candidate.id);
-      setVotes(getVotes(candidate.id) + latestLive);
+    try {
+      // إبلاغ السيرفر بوجود صوت جديد
+      await updateLiveVote(candidate.id, 'vote');
       
-      setHasVotedGender(true);
-      setVotedForThis(true);
-      onVoteChange();
-      toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+      const success = castVote(candidate.id, candidate.gender);
+      if (success) {
+        // تحديث الرقم فوراً في الواجهة من السيرفر لضمان المصداقية
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        
+        setHasVotedGender(true);
+        setVotedForThis(true);
+        onVoteChange();
+        toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+      }
+    } catch (e) {
+      toast.error("Error updating votes");
     }
   };
 
   const handleUndo = async () => {
-    // تحديث السيرفر بالإلغاء
-    await updateLiveVote(candidate.id, 'undo');
-
-    const success = undoVote(candidate.gender);
-    if (success) {
-      // إعادة جلب المجموع المحدث
-      const latestLive = await fetchLiveVotes(candidate.id);
-      setVotes(getVotes(candidate.id) + latestLive);
+    try {
+      // إبلاغ السيرفر بإلغاء الصوت
+      await updateLiveVote(candidate.id, 'undo');
       
-      setHasVotedGender(false);
-      setVotedForThis(false);
-      onVoteChange();
-      toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      const success = undoVote(candidate.gender);
+      if (success) {
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        setHasVotedGender(false);
+        setVotedForThis(false);
+        onVoteChange();
+        toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      }
+    } catch (e) {
+      toast.error("Error updating votes");
     }
   };
 
@@ -91,6 +96,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
     { icon: Instagram, url: candidate.instagram, label: 'Instagram' },
   ].filter(s => s.url);
 
+  // --- كود الواجهة والصور (كما هو تماماً في ملفك الأساسي لضمان التناسق) ---
   return (
     <div className="container max-w-5xl py-8 animate-fade-up">
       <button onClick={onBack} className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]">
@@ -99,7 +105,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* Images - نفس الأكواد الأصلية بدون تعديل التنسيق */}
+        {/* Images */}
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
             <img
@@ -191,7 +197,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
         </div>
       </div>
 
-      {/* Gallery section - نفس الأكواد الأصلية */}
+      {/* Gallery section */}
       {candidate.gallery.length > 1 && (
         <div className="mt-12">
           <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
