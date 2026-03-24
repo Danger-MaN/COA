@@ -10,15 +10,15 @@ interface CandidateCardProps {
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string) => void;
-  onVoteChange?: () => void; // اختياري، للتحديث من الأب عند التصويت
+  refreshKey?: number; // إضافة مفتاح لتحديث البطاقات عند التصويت
 }
 
-export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, onVoteChange }: CandidateCardProps) {
+export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, refreshKey }: CandidateCardProps) {
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
 
-  // جلب الأصوات الحية عند تحميل المكون
+  // جلب الأصوات الحية عند تحميل المكون أو عند تغير refreshKey (بعد التصويت)
   useEffect(() => {
     async function loadLiveVotes() {
       try {
@@ -30,23 +30,7 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
       }
     }
     loadLiveVotes();
-  }, [candidate.id]);
-
-  // إذا تم توفير onVoteChange، يمكن إعادة الجلب عند التصويت (اختياري)
-  useEffect(() => {
-    if (onVoteChange) {
-      // سنقوم بإعادة الجلب عند استدعاء onVoteChange من الأب
-      const handleVoteChange = () => {
-        async function refresh() {
-          const liveVotes = await fetchLiveVotes(candidate.id);
-          setVotes(getVotes(candidate.id) + liveVotes);
-        }
-        refresh();
-      };
-      // هذا مجرد فكرة، لكن من الأفضل أن يقوم الأب بإعادة جلب البيانات لجميع البطاقات
-      // بدلاً من جلب كل بطاقة على حدة عند كل تغيير.
-    }
-  }, [onVoteChange, candidate.id]);
+  }, [candidate.id, refreshKey]); // إعادة الجلب عندما يتغير refreshKey
 
   return (
     <div
