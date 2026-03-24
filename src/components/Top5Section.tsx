@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect } from 'react';
-import { Candidate, getVotes, fetchLiveVotes } from '@/lib/data';
+import { useRef } from 'react';
+import { Candidate } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { Crown } from 'lucide-react';
 
@@ -14,28 +14,8 @@ interface Top5Props {
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [candidatesWithVotes, setCandidatesWithVotes] = useState<Candidate[]>(candidates);
-
-  useEffect(() => {
-    async function loadLiveVotes() {
-      try {
-        const results = await Promise.all(
-          candidates.map(async (c) => {
-            const liveVotes = await fetchLiveVotes(c.id);
-            const staticVotes = getVotes(c.id);
-            return {
-              ...c,
-              votes: staticVotes + liveVotes
-            };
-          })
-        );
-        setCandidatesWithVotes(results);
-      } catch (error) {
-        console.error("Error loading live votes for Top5:", error);
-      }
-    }
-    loadLiveVotes();
-  }, [candidates]);
+  // ترتيب تنازلي حسب الأصوات
+  const sortedCandidates = [...candidates].sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0));
 
   return (
     <div className="mb-2">
@@ -44,7 +24,7 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
         <h3 className="font-display text-lg font-semibold text-gold">{title} — {genderLabel}</h3>
       </div>
       <div ref={scrollRef} className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin">
-        {candidatesWithVotes.map((c, i) => (
+        {sortedCandidates.map((c, i) => (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
