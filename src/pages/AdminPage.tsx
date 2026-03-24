@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { candidates } from '@/lib/data';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
@@ -43,7 +42,8 @@ const AdminPage = () => {
         toast.error(data.error || (lang === 'ar' ? 'حدث خطأ' : 'An error occurred'));
       }
     } catch (error) {
-      toast.error(lang === 'ar' ? 'خطأ في الاتصال' : 'Connection error');
+      console.error(error);
+      toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
     } finally {
       setLoading(false);
     }
@@ -84,9 +84,6 @@ const AdminPage = () => {
                 placeholder="مثال: m-ahmed"
                 required
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {lang === 'ar' ? 'الأكواد المتاحة:' : 'Available IDs:'} {candidates.map(c => c.id).join(', ')}
-              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-2">
