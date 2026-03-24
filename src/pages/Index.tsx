@@ -17,44 +17,23 @@ const Index = () => {
 
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  // جلب البيانات الحية عند التحميل أو عند تحديث التصويت
   useEffect(() => {
-    let isMounted = true;
-    
-    const loadLiveStats = async () => {
+    // جلب البيانات الحية (ملفات + سيرفر) وترتيبها
+    const loadStats = async () => {
       const [males, females] = await Promise.all([
         getTop5Live('male'),
         getTop5Live('female')
       ]);
-      
-      if (isMounted) {
-        setMaleTop5(males);
-        setFemaleTop5(females);
-      }
+      setMaleTop5(males);
+      setFemaleTop5(females);
     };
-
-    loadLiveStats();
-    return () => { isMounted = false; };
+    loadStats();
   }, [refreshKey]);
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
-      <Header
-        siteName={tr('siteName')}
-        isDark={isDark}
-        toggleTheme={toggleTheme}
-        lang={lang}
-        toggleLang={toggleLang}
-        darkModeLabel={tr('darkMode')}
-        lightModeLabel={tr('lightMode')}
-      />
-
-      <HeroSection
-        siteName={tr('siteName')}
-        tagline={tr('tagline')}
-        ctaText={tr('startVoting')}
-        onCtaClick={() => navigate('/select')}
-      />
+      <Header siteName={tr('siteName')} isDark={isDark} toggleTheme={toggleTheme} lang={lang} toggleLang={toggleLang} darkModeLabel={tr('darkMode')} lightModeLabel={tr('lightMode')} />
+      <HeroSection siteName={tr('siteName')} tagline={tr('tagline')} ctaText={tr('startVoting')} onCtaClick={() => navigate('/select')} />
 
       <section className="container py-12">
         <div className="rounded-2xl border border-gold/10 bg-card/50 p-6 shadow-xl backdrop-blur-sm md:p-8">
