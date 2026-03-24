@@ -50,12 +50,27 @@ const CandidatePage = () => {
     if (refreshKey > 0) fetchData();
   }, [refreshKey, fetchData]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" /></div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen marble-texture flex items-center justify-center" dir={isRtl ? 'rtl' : 'ltr'}>
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+      </div>
+    );
+  }
+
   if (!candidateWithVotes) return null;
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
-      <Header ... />
+      <Header
+        siteName={tr('siteName')}
+        isDark={isDark}
+        toggleTheme={toggleTheme}
+        lang={lang}
+        toggleLang={toggleLang}
+        darkModeLabel={tr('darkMode')}
+        lightModeLabel={tr('lightMode')}
+      />
       <CandidateProfile
         key={`${id}-${refreshKey}`}
         candidate={candidateWithVotes}
@@ -73,7 +88,18 @@ const CandidatePage = () => {
         undoLabel={tr('undoVote')}
         onVoteChange={onVoteChange}
       />
-      <footer ... />
+      <footer className="border-t border-gold/20 py-8">
+        <div className="container text-center">
+          <a
+            href="https://www.facebook.com/groups/EGY.Model"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-muted-foreground font-display transition-colors hover:text-gold"
+          >
+            {tr('footer')}
+          </a>
+        </div>
+      </footer>
     </div>
   );
 };
