@@ -50,10 +50,12 @@ const instagramFiles = import.meta.glob<string>(
 
 /* ── Functions ── */
 
-// تعديل Regex ليكون أكثر مرونة مع الحروف العربية والرموز
+/**
+ * فك تشفير المسارات لضمان التعامل مع الأسماء العربية والشرطات بشكل صحيح
+ */
 function parsePath(path: string): { gender: Gender; folderName: string } | null {
-  const normalizedPath = decodeURIComponent(path);
-  const match = normalizedPath.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
+  const decodedPath = decodeURIComponent(path);
+  const match = decodedPath.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
   if (!match) return null;
   return {
     gender: match[1].toLowerCase() as Gender,
@@ -61,10 +63,19 @@ function parsePath(path: string): { gender: Gender; folderName: string } | null 
   };
 }
 
-// تعديل دالة القراءة للبحث الذكي عن المفاتيح لتجنب مشاكل الـ Encoding
+/**
+ * دالة البحث الذكي عن الملفات النصية باستخدام فك التشفير والمقارنة غير الحساسة لحالة الأحرف
+ */
 function readText(files: Record<string, string>, genderFolder: string, folderName: string, fileName: string): string {
-  const targetPath = `/${genderFolder}/${folderName}/${fileName}`.toLowerCase();
-  const key = Object.keys(files).find(k => decodeURIComponent(k).toLowerCase().endsWith(targetPath));
+  const targetFolder = folderName.toLowerCase();
+  const targetFile = fileName.toLowerCase();
+  const targetGender = genderFolder.toLowerCase();
+
+  const key = Object.keys(files).find(k => {
+    const decodedKey = decodeURIComponent(k).toLowerCase();
+    return decodedKey.includes(`/${targetGender}/${targetFolder}/${targetFile}`);
+  });
+
   return (key ? files[key] : '').trim();
 }
 
@@ -83,7 +94,7 @@ function buildCandidates(): Candidate[] {
     const genderFolder = info.gender === 'male' ? 'Male' : 'Female';
     const folderName = info.folderName;
 
-    // تجميع الصور
+    // تجميع صور المعرض مع فك تشفير المسارات للبحث
     const galleryPrefix = `/src/assets/candidates/${genderFolder}/${folderName}/gallery/`.toLowerCase();
     const gallery = Object.entries(galleryImages)
       .filter(([p]) => decodeURIComponent(p).toLowerCase().includes(galleryPrefix))
@@ -93,7 +104,9 @@ function buildCandidates(): Candidate[] {
     const mainImg = mainImages[path];
 
     results.push({
+      // الـ ID سيظل مشفراً لضمان سلامة الروابط في المتصفح
       id: `${info.gender[0]}-${encodeURIComponent(folderName)}`,
+      // تحويل الشرطة لمسافة عند العرض في الموقع
       name: folderName.replace(/-/g, ' '), 
       bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
       gender: info.gender,
@@ -114,12 +127,15 @@ const votesMap: Record<string, number> = (() => {
   const map: Record<string, number> = {};
   candidates.forEach(c => {
     const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
-    const folderName = decodeURIComponent(c.id.slice(2));
-    const raw = readText(voteFiles, genderFolder, folderName, 'votes.txt');
+    // فك التشفير عن الجزء الخاص بالاسم من الـ ID للبحث عن ملف الأصوات
+    const folderNameFromId = decodeURIComponent(c.id.split('-').slice(1).join('-'));
+    const raw = readText(voteFiles, genderFolder, folderNameFromId, 'votes.txt');
     map[c.id] = parseInt(raw, 10) || 0;
   });
   return map;
 })();
+
+/* ── Exported Utilities ── */
 
 export function getVotes(candidateId: string): number {
   return votesMap[candidateId] || 0;
@@ -129,7 +145,6 @@ export function getAllVotes(): Record<string, number> {
   return { ...votesMap };
 }
 
-// باقي الدوال (hasVoted, castVote, الخ) تبقى كما هي في الكود السابق
 export function hasVoted(gender: Gender): boolean {
   try {
     const voted = localStorage.getItem('taj_voted');
@@ -146,12 +161,15 @@ export function getVotedCandidateId(gender: Gender): string | null {
 
 export function castVote(candidateId: string, gender: Gender): boolean {
   if (hasVoted(gender)) return false;
+  
   const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   votedMap[gender] = true;
   localStorage.setItem('taj_voted', JSON.stringify(votedMap));
+
   const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   candidateMap[gender] = candidateId;
   localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
+
   document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
   return true;
 }
@@ -159,12 +177,15 @@ export function castVote(candidateId: string, gender: Gender): boolean {
 export function undoVote(gender: Gender): boolean {
   const id = getVotedCandidateId(gender);
   if (!id) return false;
+
   const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   delete votedMap[gender];
   localStorage.setItem('taj_voted', JSON.stringify(votedMap));
+
   const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   delete candidateMap[gender];
   localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
+
   document.cookie = `voted_${gender}=; max-age=0; path=/`;
   return true;
 }
@@ -177,4 +198,11 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
 
 export function getTop5(gender: Gender): Candidate[] {
   return getCandidatesSorted(gender).slice(0, 5);
+}
+
+/**
+ * دالة هامة جداً لجلب البيانات باستخدام ID يحتوي على لغة عربية
+ */
+export function getCandidateById(id: string): Candidate | undefined {
+  return candidates.find(c => decodeURIComponent(c.id) === decodeURIComponent(id));
 }
