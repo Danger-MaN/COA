@@ -64,6 +64,14 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
      toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
     }
   };
+  
+  useEffect(() => {
+    async function loadVotes() {
+      const liveVotes = await fetchLiveVotes(candidate.id);
+      setVotes(getVotes(candidate.id) + liveVotes);
+    }
+    loadVotes();
+  }, [candidate.id]);
 
 
   const socials = [
