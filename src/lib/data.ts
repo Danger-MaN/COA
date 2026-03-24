@@ -244,6 +244,28 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
 
+/* ── Live Data Fetching with timeout and logging ── */
+export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch('/.netlify/functions/vote-api?action=getAll', {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) {
+      console.error(`fetchAllLiveVotes failed: ${response.status}`);
+      return {};
+    }
+    const data = await response.json();
+    console.log('Live votes loaded:', data);
+    return data;
+  } catch (err) {
+    console.error('Error in fetchAllLiveVotes:', err);
+    return {};
+  }
+}
+
 export function getTop5(gender: Gender): Candidate[] {
   return getCandidatesSorted(gender).slice(0, 10);
 }
