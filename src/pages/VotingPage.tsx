@@ -1,11 +1,10 @@
-import { useMemo } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { useVotes } from '@/context/VotesContext';
-import { candidates, getVotes } from '@/lib/data';
+import { candidates, getVotes, fetchLiveVotes, Gender, Candidate } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 
 const VotingPage = () => {
@@ -13,20 +12,46 @@ const VotingPage = () => {
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { liveVotes, refreshLiveVotes } = useVotes();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [candidatesWithVotes, setCandidatesWithVotes] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const validGender = gender === 'female' ? 'female' : 'male';
+  const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
-  const candidateList = useMemo(() => {
-    const filtered = candidates.filter(c => c.gender === validGender);
-    return filtered.map(c => ({
-      ...c,
-      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
-    })).sort((a, b) => b.votes! - a.votes!);
-  }, [validGender, liveVotes]);
+  const fetchAndSortCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const filtered = candidates.filter(c => c.gender === validGender);
+      // جلب الأصوات الحية لجميع المرشحين
+      const results = await Promise.all(
+        filtered.map(async (c) => {
+          const liveVotes = await fetchLiveVotes(c.id);
+          const staticVotes = getVotes(c.id);
+          return {
+            ...c,
+            votes: staticVotes + liveVotes
+          };
+        })
+      );
+      // الترتيب تنازلياً حسب عدد الأصوات
+      const sorted = results.sort((a, b) => (b.votes || 0) - (a.votes || 0));
+      setCandidatesWithVotes(sorted);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  }, [validGender]);
 
-  const onVoteChange = () => refreshLiveVotes();
+  useEffect(() => {
+    fetchAndSortCandidates();
+  }, [fetchAndSortCandidates]);
+
+  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
+  useEffect(() => {
+    if (refreshKey > 0) fetchAndSortCandidates();
+  }, [refreshKey, fetchAndSortCandidates]);
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -61,19 +86,25 @@ const VotingPage = () => {
           <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
-          {candidateList.map((c, i) => (
-            <CandidateCard
-              key={`${c.id}-${Object.keys(liveVotes).length}`}
-              candidate={c}
-              lang={lang}
-              rank={i}
-              votedLabel={tr('voted')}
-              votesLabel={tr('votes')}
-              onSelect={(id) => navigate(`/candidate/${id}`)}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
+            {candidatesWithVotes.map((c, i) => (
+              <CandidateCard
+                key={`${c.id}-${refreshKey}`}
+                candidate={c}
+                lang={lang}
+                rank={i}
+                votedLabel={tr('voted')}
+                votesLabel={tr('votes')}
+                onSelect={(id) => navigate(`/candidate/${id}`)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <footer className="border-t border-gold/20 py-8">
