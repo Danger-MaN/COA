@@ -4,41 +4,40 @@ import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesLive, Gender, Candidate } from '@/lib/data';
+import { getCandidatesWithLive, Gender, Candidate } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
+import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
 const VotingPage = () => {
   const { gender } = useParams<{ gender: string }>();
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
+  const { liveVotes, refreshLiveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
+  const onVoteChange = useCallback(() => {
+    refreshLiveVotes();
+    setRefreshKey(k => k + 1);
+  }, [refreshLiveVotes]);
+
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
-  const fetchCandidates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getCandidatesLive(validGender);
-      setCandidates(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!liveLoading && Object.keys(liveVotes).length > 0) {
+      setCandidates(getCandidatesWithLive(validGender, liveVotes));
     }
-  }, [validGender]);
+  }, [liveVotes, liveLoading, validGender]);
 
-  useEffect(() => {
-    fetchCandidates();
-  }, [fetchCandidates]);
-
-  useEffect(() => {
-    if (refreshKey > 0) fetchCandidates();
-  }, [refreshKey, fetchCandidates]);
+  if (liveLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -68,31 +67,24 @@ const VotingPage = () => {
           </h2>
         </div>
 
-        {/* Voting notice */}
         <div className="mb-8 flex items-center gap-3 rounded-xl border border-gold/20 bg-gold/5 px-5 py-3.5">
           <AlertTriangle className="h-5 w-5 flex-shrink-0 text-gold" />
           <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
         </div>
 
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
-            {candidates.map((c, i) => (
-              <CandidateCard
-                key={`${c.id}-${refreshKey}`}
-                candidate={c}
-                lang={lang}
-                rank={i}
-                votedLabel={tr('voted')}
-                votesLabel={tr('votes')}
-                onSelect={(id) => navigate(`/candidate/${id}`)}
-              />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
+          {candidates.map((c, i) => (
+            <CandidateCard
+              key={`${c.id}-${refreshKey}`}
+              candidate={c}
+              lang={lang}
+              rank={i}
+              votedLabel={tr('voted')}
+              votesLabel={tr('votes')}
+              onSelect={(id) => navigate(`/candidate/${id}`)}
+            />
+          ))}
+        </div>
       </div>
 
       <footer className="border-t border-gold/20 py-8">
