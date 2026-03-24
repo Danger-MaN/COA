@@ -1,43 +1,30 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { HeroSection } from '@/components/HeroSection';
 import { Top5Section } from '@/components/Top5Section';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getTop5WithLive, Candidate } from '@/lib/data';
+import { getTop5, getTop5WithLive, Candidate } from '@/lib/data';
 import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
 const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { liveVotes, refreshLiveVotes, isLoading: liveLoading } = useLiveVotes();
+  const { liveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [topMale, setTopMale] = useState<Candidate[]>([]);
-  const [topFemale, setTopFemale] = useState<Candidate[]>([]);
+  const [topMale, setTopMale] = useState<Candidate[]>(() => getTop5('male'));
+  const [topFemale, setTopFemale] = useState<Candidate[]>(() => getTop5('female'));
   const navigate = useNavigate();
 
-  const onVoteChange = useCallback(() => {
-    refreshLiveVotes(); // تحديث الأصوات الحية بعد التصويت
-    setRefreshKey(k => k + 1);
-  }, [refreshLiveVotes]);
-
-  // تحديث البيانات عند تغير liveVotes
+  // عند تحميل الأصوات الحية، نقوم بتحديث القوائم
   useEffect(() => {
     if (!liveLoading && Object.keys(liveVotes).length > 0) {
       setTopMale(getTop5WithLive('male', liveVotes));
       setTopFemale(getTop5WithLive('female', liveVotes));
+      setRefreshKey(k => k + 1);
     }
   }, [liveVotes, liveLoading]);
-
-  // إذا لم يكن هناك أصوات حية بعد (انتظار التحميل)
-  if (liveLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
