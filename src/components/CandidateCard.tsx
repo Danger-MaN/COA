@@ -1,6 +1,6 @@
-import { Candidate, getVotedCandidateId, getVotes } from '@/lib/data';
+import { Candidate, getVotes, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Heart, Check } from 'lucide-react';
 
 interface CandidateCardProps {
@@ -10,21 +10,12 @@ interface CandidateCardProps {
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string) => void;
-  // أضفنا هذا الـ Prop لضمان إعادة الصيرورة عند تحديث البيانات عالمياً
-  refreshKey?: number; 
 }
 
-export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, refreshKey }: CandidateCardProps) {
-  // الاعتماد على getVotes لجلب القيمة الأحدث سواء من الملف أو السيرفر المحدث
-  const [votes, setVotes] = useState(() => getVotes(candidate.id));
-  
+export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
+  const [votes] = useState(() => getVotes(candidate.id));
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
-
-  // تحديث القيمة المحلية فور تغير الـ refreshKey أو بيانات المتسابق
-  useEffect(() => {
-    setVotes(getVotes(candidate.id));
-  }, [candidate.id, refreshKey, candidate.votes]);
 
   return (
     <div
@@ -39,7 +30,6 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
           className="h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
           loading="lazy"
         />
-        
         <div className="absolute top-3 start-3 flex h-9 w-9 items-center justify-center rounded-xl bg-background/80 backdrop-blur-sm text-sm font-bold text-gold shadow-lg border border-gold/20">
           {rank + 1}
         </div>
@@ -57,18 +47,10 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
           </span>
         </div>
       </div>
-
-      <div className="p-4 text-start">
+      <div className="p-4">
         <h3 className="font-display text-base font-semibold truncate">{name}</h3>
         <div className="mt-1 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground italic">
-            {votes.toLocaleString()} {votesLabel}
-          </p>
-          {votedForThis && (
-            <span className="text-[10px] font-bold uppercase tracking-wider text-gold">
-              {votedLabel}
-            </span>
-          )}
+          <p className="text-sm text-muted-foreground">{votes} {votesLabel}</p>
         </div>
       </div>
     </div>
