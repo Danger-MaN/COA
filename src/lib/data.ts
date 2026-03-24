@@ -59,8 +59,11 @@ function parsePath(path: string): { gender: Gender; folderName: string } | null 
 }
 
 function readText(files: Record<string, string>, gender: string, name: string, file: string): string {
-  const key = `/src/assets/candidates/${gender}/${name}/${file}`;
-  return (files[key] || '').trim();
+  // نقوم بالبحث عن المفتاح الذي ينتهي بـ /اسم_المجلد/اسم_الملف
+  // هذا يتجنب مشاكل التشفير (Encoding) في الحروف العربية
+  const targetSuffix = `/${gender}/${name}/${file}`;
+  const key = Object.keys(files).find(k => k.endsWith(targetSuffix));
+  return (key ? files[key] : '').trim();
 }
 
 function buildCandidates(): Candidate[] {
@@ -106,6 +109,10 @@ export const candidates: Candidate[] = buildCandidates();
 
 /* ── Votes ── */
 const votesMap = (() => {
+  const originalFolderName = decodeURIComponent(c.id.slice(2));
+  // نستخدم الاسم الأصلي (بما فيه من شرطات وعربي) للبحث في الملفات
+  const raw = readText(voteFiles, genderFolder, originalFolderName, 'votes.txt');
+  
   const result: Record<string, number> = {};
   for (const c of candidates) {
     const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
