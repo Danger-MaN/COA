@@ -7,7 +7,7 @@ export interface Candidate {
   gender: Gender;
   image: string;
   gallery: string[];
-  votes?: number; // أضفنا هذا الحقل لتخزين المجموع النهائي
+  votes: number; 
   facebook?: string;
   twitter?: string;
   instagram?: string;
@@ -18,205 +18,109 @@ const mainImages = import.meta.glob<string>('/src/assets/candidates/*/*/main.{jp
 const galleryImages = import.meta.glob<string>('/src/assets/candidates/*/*/gallery/*.{jpg,jpeg,png,webp,avif,gif}', { eager: true, import: 'default' });
 const bioFiles = import.meta.glob<string>('/src/assets/candidates/*/*/bio.txt', { eager: true, query: '?raw', import: 'default' });
 const voteFiles = import.meta.glob<string>('/src/assets/candidates/*/*/votes.txt', { eager: true, query: '?raw', import: 'default' });
-const facebookFiles = import.meta.glob<string>('/src/assets/candidates/*/*/facebook.txt', { eager: true, query: '?raw', import: 'default' });
-const twitterFiles = import.meta.glob<string>('/src/assets/candidates/*/*/twitter.txt', { eager: true, query: '?raw', import: 'default' });
-const instagramFiles = import.meta.glob<string>('/src/assets/candidates/*/*/instagram.txt', { eager: true, query: '?raw', import: 'default' });
+const socialFiles = {
+  facebook: import.meta.glob<string>('/src/assets/candidates/*/*/facebook.txt', { eager: true, query: '?raw', import: 'default' }),
+  twitter: import.meta.glob<string>('/src/assets/candidates/*/*/twitter.txt', { eager: true, query: '?raw', import: 'default' }),
+  instagram: import.meta.glob<string>('/src/assets/candidates/*/*/instagram.txt', { eager: true, query: '?raw', import: 'default' }),
+};
 
-/* ── Helper Functions ── */
+// معالجة البيانات الأولية من الملفات النصية
+const paths = Object.keys(mainImages);
+export const candidates: Candidate[] = paths.map((path) => {
+  const match = path.match(/\/candidates\/(male|female)\/([^/]+)\//);
+  if (!match) return null as any;
 
-function parsePath(path: string): { gender: Gender; folderName: string } | null {
-  const decodedPath = decodeURIComponent(path);
-  const match = decodedPath.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
-  if (!match) return null;
+  const gender = match[1] as Gender;
+  const id = match[2];
+  const folderPath = `/src/assets/candidates/${gender}/${id}`;
+
+  const gallery = Object.keys(galleryImages)
+    .filter((p) => p.startsWith(`${folderPath}/gallery/`))
+    .map((p) => galleryImages[p]);
+
+  const rawVotes = voteFiles[`${folderPath}/votes.txt`] || '0';
+
   return {
-    gender: match[1].toLowerCase() as Gender,
-    folderName: match[2],
+    id,
+    name: id.replace(/-/g, ' '),
+    gender,
+    image: mainImages[path],
+    gallery: [mainImages[path], ...gallery],
+    bio: bioFiles[`${folderPath}/bio.txt`] || '',
+    votes: parseInt(rawVotes, 10) || 0,
+    facebook: socialFiles.facebook[`${folderPath}/facebook.txt`],
+    twitter: socialFiles.twitter[`${folderPath}/twitter.txt`],
+    instagram: socialFiles.instagram[`${folderPath}/instagram.txt`],
   };
-}
+}).filter(Boolean);
 
-function readText(files: Record<string, string>, genderFolder: string, folderName: string, fileName: string): string {
-  const targetFolder = folderName.toLowerCase();
-  const targetFile = fileName.toLowerCase();
-  const targetGender = genderFolder.toLowerCase();
+// نظام الكاش للأصوات القادمة من السيرفر
+let liveVotesCache: Record<string, number> = {};
 
-  const key = Object.keys(files).find(k => {
-    const decodedKey = decodeURIComponent(k).toLowerCase();
-    return decodedKey.includes(`/${targetGender}/${targetFolder}/${targetFile}`);
-  });
-
-  return (key ? files[key] : '').trim();
-}
-
-function buildCandidates(): Candidate[] {
-  const seen = new Set<string>();
-  const results: Candidate[] = [];
-
-  for (const path of Object.keys(mainImages)) {
-    const info = parsePath(path);
-    if (!info) continue;
-
-    const key = `${info.gender}-${info.folderName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const genderFolder = info.gender === 'male' ? 'Male' : 'Female';
-    const folderName = info.folderName;
-
-    const galleryPrefix = `/src/assets/candidates/${genderFolder}/${folderName}/gallery/`.toLowerCase();
-    const gallery = Object.entries(galleryImages)
-      .filter(([p]) => decodeURIComponent(p).toLowerCase().includes(galleryPrefix))
-      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
-      .map(([, url]) => url);
-
-    const mainImg = mainImages[path];
-
-    results.push({
-      id: `${info.gender[0]}-${folderName}`,
-      name: folderName.replace(/-/g, ' '), 
-      bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
-      gender: info.gender,
-      image: mainImg,
-      gallery: [mainImg, ...gallery],
-      facebook: readText(facebookFiles, genderFolder, folderName, 'facebook.txt') || undefined,
-      twitter: readText(twitterFiles, genderFolder, folderName, 'twitter.txt') || undefined,
-      instagram: readText(instagramFiles, genderFolder, folderName, 'instagram.txt') || undefined,
-    });
-  }
-  return results;
-}
-
-export const candidates: Candidate[] = buildCandidates();
-
-/* ── Votes Mapping ── */
-const votesMap: Record<string, number> = (() => {
-  const map: Record<string, number> = {};
-  candidates.forEach(c => {
-    const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
-    const folderNameFromId = c.id.split('-').slice(1).join('-');
-    const raw = readText(voteFiles, genderFolder, folderNameFromId, 'votes.txt');
-    map[c.id] = parseInt(raw, 10) || 0;
-  });
-  return map;
-})();
-
-/* ── Live Data Fetching ── */
-
-export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
+export async function fetchLiveVotes() {
   try {
-    const response = await fetch('/.netlify/functions/vote-api?action=getAll');
-    if (!response.ok) return {};
-    return await response.json();
-  } catch {
-    return {};
+    const response = await fetch('/.netlify/functions/get-votes');
+    if (response.ok) {
+      const data = await response.json();
+      liveVotesCache = data;
+      // مزامنة المصفوفة الأساسية
+      candidates.forEach(c => {
+        if (liveVotesCache[c.id] !== undefined) {
+          c.votes = liveVotesCache[c.id];
+        }
+      });
+      return true;
+    }
+  } catch (error) {
+    console.error("Error fetching live votes:", error);
   }
+  return false;
 }
 
-export async function fetchLiveVotes(candidateId: string): Promise<number> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}`);
-    if (!response.ok) return 0;
-    const data = await response.json();
-    return data.votes || 0;
-  } catch {
-    return 0;
-  }
+export function getVotes(id: string): number {
+  if (liveVotesCache[id] !== undefined) return liveVotesCache[id];
+  const candidate = candidates.find(c => c.id === id);
+  return candidate?.votes || 0;
 }
-
-export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<number> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
-      method: 'POST'
-    });
-    const data = await response.json();
-    return data.votes || 0;
-  } catch {
-    return 0;
-  }
-}
-
-/* ── Exported Functions ── */
-
-export function getVotes(candidateId: string): number {
-  return votesMap[candidateId] || 0;
-}
-
-export function getAllVotes(): Record<string, number> {
-  return { ...votesMap };
-}
-
-export function getCandidateById(id: string | undefined): Candidate | undefined {
-  if (!id) return undefined;
-  const targetId = decodeURIComponent(id);
-  return candidates.find(c => c.id === targetId || decodeURIComponent(c.id) === targetId);
-}
-
-// الدالة الأهم لربط الواجهة الرئيسية بالسيرفر والترتيب الصحيح
-export async function getCandidatesLive(gender: Gender): Promise<Candidate[]> {
-  const liveVotesMap = await fetchAllLiveVotes();
-  
-  return candidates
-    .filter(c => c.gender === gender)
-    .map(c => ({
-      ...c,
-      votes: (votesMap[c.id] || 0) + (liveVotesMap[c.id] || 0)
-    }))
-    .sort((a, b) => (b.votes || 0) - (a.votes || 0));
-}
-
-// دالة التوب 5 المتوافقة مع السيرفر
-export async function getTop5Live(gender: Gender): Promise<Candidate[]> {
-  const allSorted = await getCandidatesLive(gender);
-  return allSorted.slice(0, 5);
-}
-
-/* ── Local Persistence (Logic unchanged) ── */
 
 export function hasVoted(gender: Gender): boolean {
-  try {
-    const voted = localStorage.getItem('taj_voted');
-    return voted ? !!JSON.parse(voted)[gender] : false;
-  } catch { return false; }
+  if (typeof window === 'undefined') return false;
+  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
+  return !!votedMap[gender];
 }
 
 export function getVotedCandidateId(gender: Gender): string | null {
-  try {
-    const stored = localStorage.getItem('taj_voted_candidate');
-    return stored ? JSON.parse(stored)[gender] || null : null;
-  } catch { return null; }
+  if (typeof window === 'undefined') return null;
+  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
+  return candidateMap[gender] || null;
 }
 
-export function castVote(candidateId: string, gender: Gender): boolean {
+export async function castVote(candidateId: string, gender: Gender): Promise<boolean> {
   if (hasVoted(gender)) return false;
-  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
-  votedMap[gender] = true;
-  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
-  candidateMap[gender] = candidateId;
-  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-  document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
-  return true;
+  try {
+    const response = await fetch('/.netlify/functions/vote', {
+      method: 'POST',
+      body: JSON.stringify({ candidateId, gender })
+    });
+    if (response.ok) {
+      const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
+      votedMap[gender] = true;
+      localStorage.setItem('taj_voted', JSON.stringify(votedMap));
+      const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
+      candidateMap[gender] = candidateId;
+      localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
+      return true;
+    }
+  } catch (e) { console.error(e); }
+  return false;
 }
 
-export function undoVote(gender: Gender): boolean {
-  const id = getVotedCandidateId(gender);
-  if (!id) return false;
-  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
-  delete votedMap[gender];
-  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
-  delete candidateMap[gender];
-  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-  document.cookie = `voted_${gender}=; max-age=0; path=/`;
-  return true;
-}
-
-// دوال قديمة للتوافق (Legacy Support)
 export function getCandidatesSorted(gender: Gender): Candidate[] {
   return [...candidates]
-    .filter(c => c.gender === gender)
-    .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
+    .filter((c) => c.gender === gender)
+    .sort((a, b) => getVotes(b.id) - getVotes(a.id));
 }
 
 export function getTop5(gender: Gender): Candidate[] {
-  return getCandidatesSorted(gender).slice(0, 10);
+  return getCandidatesSorted(gender).slice(0, 5);
 }
