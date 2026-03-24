@@ -1,8 +1,10 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
 import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // إضافة useEffect
 import { toast } from 'sonner';
+// استيراد دوال السيرفر
+import { fetchLiveVotes, updateLiveVote } from '@/lib/data'; 
 
 interface ProfileProps {
   candidate: Candidate;
@@ -29,29 +31,56 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  const handleVote = () => {
+  // جلب التصويتات الحية عند تحميل الصفحة
+  useEffect(() => {
+    async function loadLiveVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+      }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
+
+  const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
-    const success = castVote(candidate.id, candidate.gender);
-    if (success) {
-      setVotes(prev => prev + 1);
-      setHasVotedGender(true);
-      setVotedForThis(true);
-      onVoteChange();
-      toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+    
+    try {
+      await updateLiveVote(candidate.id, 'vote');
+      const success = castVote(candidate.id, candidate.gender);
+      if (success) {
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        setHasVotedGender(true);
+        setVotedForThis(true);
+        onVoteChange();
+        toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+      }
+    } catch (e) {
+      toast.error("Error connecting to server");
     }
   };
 
-  const handleUndo = () => {
-    const success = undoVote(candidate.gender);
-    if (success) {
-      setVotes(getVotes(candidate.id));
-      setHasVotedGender(false);
-      setVotedForThis(false);
-      onVoteChange();
-      toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+  const handleUndo = async () => {
+    try {
+      await updateLiveVote(candidate.id, 'undo');
+      const success = undoVote(candidate.gender);
+      if (success) {
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        setHasVotedGender(false);
+        setVotedForThis(false);
+        onVoteChange();
+        toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      }
+    } catch (e) {
+      toast.error("Error connecting to server");
     }
   };
 
@@ -69,7 +98,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* Images */}
+        {/* Images - نفس التنسيق الأصلي تماماً */}
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
             <img
@@ -105,7 +134,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
           </div>
           <h2 className="font-display text-3xl font-bold md:text-4xl lg:text-5xl" style={{ lineHeight: '1.1' }}>{name}</h2>
 
-          {/* Bio */}
           {candidate.bio?.trim() && (
             <div className="mt-5 rounded-xl border border-gold/10 bg-gold/5 p-4">
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gold">{bioLabel}</h4>
@@ -115,7 +143,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
 
           <p className="mt-4 text-xl text-gold font-display">{votes} {votesLabel}</p>
 
-          {/* Vote / Undo buttons */}
           <div className="mt-8 flex gap-3">
             {votedForThis ? (
               <button
@@ -141,7 +168,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
             )}
           </div>
 
-          {/* Social links */}
           {socials.length > 0 && (
             <div className="mt-8 flex gap-3">
               {socials.map(({ icon: Icon, url, label }) => (
@@ -161,7 +187,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
         </div>
       </div>
 
-      {/* Gallery section */}
+      {/* Gallery section - نفس التنسيق الأصلي تماماً */}
       {candidate.gallery.length > 1 && (
         <div className="mt-12">
           <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
