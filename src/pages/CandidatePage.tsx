@@ -1,62 +1,37 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateProfile } from '@/components/CandidateProfile';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { candidates, getCandidatesLive, Candidate } from '@/lib/data';
+import { useVotes } from '@/context/VotesContext';
+import { candidates, getVotes } from '@/lib/data';
 
 const CandidatePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [candidateWithVotes, setCandidateWithVotes] = useState<Candidate | null>(null);
-  const [rank, setRank] = useState(-1);
-  const [loading, setLoading] = useState(true);
+  const { liveVotes, refreshLiveVotes } = useVotes();
 
-  const fetchData = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const base = candidates.find(c => c.id === id);
-      if (!base) {
-        navigate('/');
-        return;
-      }
-      const liveList = await getCandidatesLive(base.gender);
-      const found = liveList.find(c => c.id === id);
-      if (found) {
-        setCandidateWithVotes(found);
-        setRank(liveList.findIndex(c => c.id === id));
-      } else {
-        setCandidateWithVotes({ ...base, votes: 0 });
-        setRank(-1);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [id, navigate]);
+  const candidateWithVotes = useMemo(() => {
+    const base = candidates.find(c => c.id === id);
+    if (!base) return null;
+    const totalVotes = (getVotes(base.id) || 0) + (liveVotes[base.id] || 0);
+    return { ...base, votes: totalVotes };
+  }, [id, liveVotes]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const rank = useMemo(() => {
+    if (!candidateWithVotes) return -1;
+    const sameGender = candidates.filter(c => c.gender === candidateWithVotes.gender);
+    const withVotes = sameGender.map(c => ({
+      id: c.id,
+      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
+    })).sort((a, b) => b.votes - a.votes);
+    return withVotes.findIndex(c => c.id === candidateWithVotes.id);
+  }, [candidateWithVotes, liveVotes]);
 
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
-  useEffect(() => {
-    if (refreshKey > 0) fetchData();
-  }, [refreshKey, fetchData]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen marble-texture flex items-center justify-center" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-      </div>
-    );
-  }
+  const onVoteChange = () => refreshLiveVotes();
 
   if (!candidateWithVotes) return null;
 
@@ -72,7 +47,7 @@ const CandidatePage = () => {
         lightModeLabel={tr('lightMode')}
       />
       <CandidateProfile
-        key={`${id}-${refreshKey}`}
+        key={`${id}-${Object.keys(liveVotes).length}`}
         candidate={candidateWithVotes}
         lang={lang}
         rank={rank}
