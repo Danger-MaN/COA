@@ -10,6 +10,7 @@ const AdminPage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const navigate = useNavigate();
+
   const [candidateId, setCandidateId] = useState('');
   const [votes, setVotes] = useState('');
   const [password, setPassword] = useState('');
@@ -25,24 +26,36 @@ const AdminPage = () => {
       toast.error(lang === 'ar' ? 'الرقم السري غير صحيح' : 'Invalid password');
       return;
     }
+
     setLoading(true);
     try {
-      const res = await fetch('/.netlify/functions/admin-vote', {
+      const response = await fetch('/.netlify/functions/admin-vote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ candidateId, votes: parseInt(votes, 10), password })
+        body: JSON.stringify({
+          candidateId,
+          votes: parseInt(votes, 10),
+          password
+        })
       });
-      const data = await res.json();
-      if (res.ok) {
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = { error: 'Invalid response from server' };
+      }
+
+      if (response.ok) {
         toast.success(lang === 'ar' ? 'تم تحديث الأصوات بنجاح' : 'Votes updated successfully');
         setCandidateId('');
         setVotes('');
         setPassword('');
       } else {
-        toast.error(data.error || (lang === 'ar' ? 'حدث خطأ' : 'An error occurred'));
+        toast.error(data.error || (lang === 'ar' ? 'حدث خطأ أثناء التحديث' : 'Update failed'));
       }
-    } catch (error) {
-      console.error(error);
+    } catch (err) {
+      console.error(err);
       toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
     } finally {
       setLoading(false);
@@ -60,17 +73,20 @@ const AdminPage = () => {
         darkModeLabel={tr('darkMode')}
         lightModeLabel={tr('lightMode')}
       />
+
       <div className="container max-w-md mx-auto py-12">
         <button
           onClick={() => navigate('/')}
-          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground"
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           ← {lang === 'ar' ? 'العودة إلى الرئيسية' : 'Back to Home'}
         </button>
+
         <div className="rounded-2xl border border-gold/20 bg-card p-6 shadow-xl">
           <h1 className="font-display text-2xl font-bold text-gold mb-6 text-center">
             {lang === 'ar' ? 'لوحة التحكم' : 'Admin Panel'}
           </h1>
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium mb-2">
@@ -85,6 +101,7 @@ const AdminPage = () => {
                 required
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-2">
                 {lang === 'ar' ? 'عدد الأصوات' : 'Votes'}
@@ -97,6 +114,7 @@ const AdminPage = () => {
                 required
               />
             </div>
+
             <div>
               <label className="block text-sm font-medium mb-2">
                 {lang === 'ar' ? 'الرقم السري' : 'Secret Password'}
@@ -109,6 +127,7 @@ const AdminPage = () => {
                 required
               />
             </div>
+
             <button
               type="submit"
               disabled={loading}
