@@ -50,11 +50,12 @@ const instagramFiles = import.meta.glob<string>(
 
 /* ── Parse path: /src/assets/candidates/{Gender}/{Name}/... ── */
 function parsePath(path: string): { gender: Gender; folderName: string } | null {
-  const match = path.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//);
+  // استخدام [^/]+ يضمن التقاط أي محرف بما في ذلك المسافة
+  const match = path.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
   if (!match) return null;
   return {
     gender: match[1].toLowerCase() as Gender,
-    folderName: match[2],
+    folderName: match[2], // هنا سيتم التقاط "Idris Magdi" كاملة
   };
 }
 
