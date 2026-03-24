@@ -223,9 +223,10 @@ export function CandidateProfile({
         {/* Info */}
         <div className="flex flex-col justify-center">
           <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{displayRank + 1}</span>
-            <span className="text-sm text-muted-foreground">{rankLabel} #{displayRank + 1}</span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{rank}</span>
+            <span className="text-sm text-muted-foreground">{rankLabel} #{rank}</span>
           </div>
+          
           <h2 className="font-display text-3xl font-bold md:text-4xl lg:text-5xl" style={{ lineHeight: '1.1' }}>{name}</h2>
 
           {candidate.bio?.trim() && (
