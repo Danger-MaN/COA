@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateProfile } from '@/components/CandidateProfile';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesWithLive, Candidate } from '@/lib/data';
+import { candidates, getCandidatesWithLive, Candidate } from '@/lib/data';
 import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
 const CandidatePage = () => {
@@ -12,45 +12,42 @@ const CandidatePage = () => {
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { liveVotes, refreshLiveVotes, isLoading: liveLoading } = useLiveVotes();
+  const { liveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
   const [candidateWithVotes, setCandidateWithVotes] = useState<Candidate | null>(null);
   const [rank, setRank] = useState(-1);
 
-  const onVoteChange = useCallback(() => {
-    refreshLiveVotes();
-    setRefreshKey(k => k + 1);
-  }, [refreshLiveVotes]);
+  // البحث عن المرشح الأساسي (بياناته الثابتة)
+  const baseCandidate = candidates.find(c => c.id === id);
 
-  useEffect(() => {
-    if (!liveLoading && id && Object.keys(liveVotes).length > 0) {
-      // نحتاج إلى المرشح الأساسي (بياناته الثابتة) من candidates
-      import('@/lib/data').then(({ candidates }) => {
-        const base = candidates.find(c => c.id === id);
-        if (!base) {
-          navigate('/');
-          return;
-        }
-        const allOfGender = getCandidatesWithLive(base.gender, liveVotes);
-        const found = allOfGender.find(c => c.id === id);
-        if (found) {
-          setCandidateWithVotes(found);
-          setRank(allOfGender.findIndex(c => c.id === id));
-        } else {
-          setCandidateWithVotes({ ...base, votes: 0 });
-          setRank(-1);
-        }
-      });
-    }
-  }, [liveVotes, liveLoading, id, navigate]);
-
-  if (liveLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-      </div>
-    );
+  // إذا لم يوجد المرشح، التوجيه للصفحة الرئيسية
+  if (!baseCandidate) {
+    navigate('/');
+    return null;
   }
+
+  // حساب الترتيب والأصوات الأولية (بدون الأصوات الحية)
+  useEffect(() => {
+    // عرض المرشح فوراً بالأصوات الثابتة
+    setCandidateWithVotes({
+      ...baseCandidate,
+      votes: baseCandidate.votes ?? 0,
+    });
+    setRank(-1); // الترتيب سيُحسب لاحقاً بعد الأصوات الحية
+  }, [baseCandidate]);
+
+  // تحديث البيانات عند تحميل الأصوات الحية
+  useEffect(() => {
+    if (!liveLoading && candidateWithVotes) {
+      const allOfGender = getCandidatesWithLive(baseCandidate.gender, liveVotes);
+      const found = allOfGender.find(c => c.id === id);
+      if (found) {
+        setCandidateWithVotes(found);
+        setRank(allOfGender.findIndex(c => c.id === id));
+      }
+      setRefreshKey(k => k + 1);
+    }
+  }, [liveVotes, liveLoading, id, baseCandidate.gender, candidateWithVotes]);
 
   if (!candidateWithVotes) return null;
 
@@ -80,7 +77,7 @@ const CandidatePage = () => {
         bioLabel={tr('bio')}
         alreadyVotedMsg={tr('alreadyVoted')}
         undoLabel={tr('undoVote')}
-        onVoteChange={onVoteChange}
+        onVoteChange={() => {}} // سنقوم بتعديله لاحقاً لتحديث Context
       />
       <footer className="border-t border-gold/20 py-8">
         <div className="container text-center">
