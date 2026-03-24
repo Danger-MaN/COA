@@ -8,7 +8,6 @@ export const config = {
 export default async (req: Request) => {
   const { candidateId, votes, password } = await req.json();
 
-  // التحقق من الرقم السري
   if (password !== 'Danger-MaN') {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
