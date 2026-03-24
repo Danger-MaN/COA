@@ -9,17 +9,17 @@ interface Top5Props {
   candidates: Candidate[];
   lang: Lang;
   votesLabel: string;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, rank: number) => void; // تغيير: نمرر rank أيضاً
 }
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [topCandidates, setTopCandidates] = useState<Candidate[]>(candidates);
+  const [rankMap, setRankMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     async function loadLiveVotesAndSort() {
       try {
-        // جلب الأصوات الحية لجميع المرشحين الواردين
         const results = await Promise.all(
           candidates.map(async (c) => {
             const liveVotes = await fetchLiveVotes(c.id);
@@ -30,9 +30,14 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
             };
           })
         );
-        // الفرز حسب votes تنازليًا ثم أخذ أول 5
-        const sorted = results.sort((a, b) => (b.votes || 0) - (a.votes || 0)).slice(0, 5);
-        setTopCandidates(sorted);
+        // الترتيب الكامل
+        const sorted = results.sort((a, b) => (b.votes || 0) - (a.votes || 0));
+        // حفظ الترتيب لكل مرشح
+        const newRankMap = new Map<string, number>();
+        sorted.forEach((c, idx) => newRankMap.set(c.id, idx + 1));
+        setRankMap(newRankMap);
+        // أخذ أول 5 للعرض
+        setTopCandidates(sorted.slice(0, 5));
       } catch (error) {
         console.error("Error loading live votes for Top5:", error);
       }
@@ -50,13 +55,13 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
         {topCandidates.map((c, i) => (
           <button
             key={c.id}
-            onClick={() => onSelect(c.id)}
+            onClick={() => onSelect(c.id, rankMap.get(c.id) || i + 1)}
             className="group relative flex-shrink-0 w-40 overflow-hidden rounded-2xl border border-gold/10 bg-card shadow-lg transition-all duration-500 hover:border-gold/30 hover:shadow-xl active:scale-[0.97]"
           >
             <div className="relative aspect-[3/4] overflow-hidden">
               <img src={c.image} alt={c.name} className="h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-105" loading="lazy" />
               <div className="absolute top-2 start-2 flex h-8 w-8 items-center justify-center rounded-xl bg-background/80 backdrop-blur-sm text-xs font-bold text-gold shadow border border-gold/20">
-                {i + 1}
+                {rankMap.get(c.id) || i + 1}
               </div>
             </div>
             <div className="p-3 text-start">
