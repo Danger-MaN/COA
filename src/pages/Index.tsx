@@ -11,25 +11,18 @@ const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchLiveVotes().finally(() => setLoading(false));
+    fetchLiveVotes().then(() => setRefreshKey(k => k + 1));
   }, []);
 
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
-
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-gold border-t-transparent" />
-      </div>
-    );
-  }
+  const onVoteChange = useCallback(() => {
+    fetchLiveVotes().then(() => setRefreshKey(k => k + 1));
+  }, []);
 
   return (
-    <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>\
       <Header
         siteName={tr('siteName')}
         isDark={isDark}
@@ -73,7 +66,9 @@ const Index = () => {
 
       <footer className="border-t border-gold/20 py-8">
         <div className="container text-center">
-          <p className="text-sm text-muted-foreground italic tracking-widest">AUREUS © 2026</p>
+          <a href="https://www.facebook.com/groups/EGY.Model" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground hover:text-gold transition-colors">
+            © 2026 EGY Model. All rights reserved.
+          </a>
         </div>
       </footer>
     </div>
