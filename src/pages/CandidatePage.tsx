@@ -4,55 +4,49 @@ import { Header } from '@/components/Header';
 import { CandidateProfile } from '@/components/CandidateProfile';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { candidates, getCandidatesLive, Candidate } from '@/lib/data';
+import { getCandidatesWithLive, Candidate } from '@/lib/data';
+import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
 const CandidatePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
+  const { liveVotes, refreshLiveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
   const [candidateWithVotes, setCandidateWithVotes] = useState<Candidate | null>(null);
   const [rank, setRank] = useState(-1);
-  const [loading, setLoading] = useState(true);
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  const fetchData = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      const base = candidates.find(c => c.id === id);
-      if (!base) {
-        navigate('/');
-        return;
-      }
-      const liveList = await getCandidatesLive(base.gender);
-      const found = liveList.find(c => c.id === id);
-      if (found) {
-        setCandidateWithVotes(found);
-        setRank(liveList.findIndex(c => c.id === id));
-      } else {
-        setCandidateWithVotes({ ...base, votes: 0 });
-        setRank(-1);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+  const onVoteChange = useCallback(() => {
+    refreshLiveVotes();
+    setRefreshKey(k => k + 1);
+  }, [refreshLiveVotes]);
+
+  useEffect(() => {
+    if (!liveLoading && id && Object.keys(liveVotes).length > 0) {
+      // نحتاج إلى المرشح الأساسي (بياناته الثابتة) من candidates
+      import('@/lib/data').then(({ candidates }) => {
+        const base = candidates.find(c => c.id === id);
+        if (!base) {
+          navigate('/');
+          return;
+        }
+        const allOfGender = getCandidatesWithLive(base.gender, liveVotes);
+        const found = allOfGender.find(c => c.id === id);
+        if (found) {
+          setCandidateWithVotes(found);
+          setRank(allOfGender.findIndex(c => c.id === id));
+        } else {
+          setCandidateWithVotes({ ...base, votes: 0 });
+          setRank(-1);
+        }
+      });
     }
-  }, [id, navigate]);
+  }, [liveVotes, liveLoading, id, navigate]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (refreshKey > 0) fetchData();
-  }, [refreshKey, fetchData]);
-
-  if (loading) {
+  if (liveLoading) {
     return (
-      <div className="min-h-screen marble-texture flex items-center justify-center" dir={isRtl ? 'rtl' : 'ltr'}>
+      <div className="min-h-screen flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
       </div>
     );
