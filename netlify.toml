@@ -1,6 +1,10 @@
 [functions]
   external_node_modules = ["@netlify/blobs"]
   node_bundler = "esbuild"
+
+[build]
+  command = "npm run build"
+  publish = "dist"
   
 [[redirects]]
   from = "/*"
