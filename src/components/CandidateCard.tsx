@@ -1,4 +1,4 @@
-import { Candidate, getVotes, fetchLiveVotes } from '@/lib/data';
+import { Candidate, getVotes, fetchLiveVotes, hasVoted, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { Heart, Check } from 'lucide-react';
@@ -10,15 +10,13 @@ interface CandidateCardProps {
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string) => void;
-  refreshKey?: number; // إضافة مفتاح لتحديث البطاقات عند التصويت
 }
 
-export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, refreshKey }: CandidateCardProps) {
+export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
 
-  // جلب الأصوات الحية عند تحميل المكون أو عند تغير refreshKey (بعد التصويت)
   useEffect(() => {
     async function loadLiveVotes() {
       try {
@@ -30,7 +28,7 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
       }
     }
     loadLiveVotes();
-  }, [candidate.id, refreshKey]); // إعادة الجلب عندما يتغير refreshKey
+  }, [candidate.id]);
 
   return (
     <div
