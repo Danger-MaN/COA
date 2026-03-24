@@ -1,4 +1,4 @@
-import { ArrowRight, ArrowLeft, Heart, Facebook, Twitter, Instagram } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
 import { Candidate, getVotes, hasVoted, castVote, getVotedCandidateId, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
@@ -21,12 +21,7 @@ interface ProfileProps {
   onVoteChange: () => void;
 }
 
-export function CandidateProfile({ 
-  candidate, lang, rank, onBack, voteLabel, votedLabel, 
-  votesLabel, backLabel, galleryLabel, rankLabel, 
-  alreadyVotedMsg, bioLabel, onVoteChange 
-}: ProfileProps) {
-  
+export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, bioLabel, onVoteChange }: ProfileProps) {
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
@@ -44,18 +39,14 @@ export function CandidateProfile({
 
   const handleVote = async () => {
     if (hasVotedGender || isVoting) return;
-
     setIsVoting(true);
     const success = await castVote(candidate.id, candidate.gender);
-    
     if (success) {
-      setVotes(prev => prev + 1);
+      setVotes(getVotes(candidate.id));
       setHasVotedGender(true);
       setVotedForThis(true);
       onVoteChange();
       toast.success(votedLabel);
-    } else {
-      toast.error("Failed to submit vote. Please try again.");
     }
     setIsVoting(false);
   };
@@ -77,7 +68,6 @@ export function CandidateProfile({
       </button>
 
       <div className="grid gap-8 lg:grid-cols-12">
-        {/* Main Image View */}
         <div className="lg:col-span-5">
           <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl">
             <img 
@@ -91,7 +81,6 @@ export function CandidateProfile({
           </div>
         </div>
 
-        {/* Content Details */}
         <div className="lg:col-span-7 flex flex-col">
           <div className="mb-6">
             <h2 className="font-display text-4xl font-bold md:text-5xl">{name}</h2>
@@ -126,7 +115,7 @@ export function CandidateProfile({
                   : 'gold-gradient text-primary-foreground shadow-lg shadow-gold/20 hover:scale-[1.02] hover:shadow-gold/40 active:scale-[0.98]'
               }`}
             >
-              <Heart className={`h-5 w-5 ${votedForThis ? 'fill-current' : ''} ${isVoting ? 'animate-pulse' : ''}`} />
+              <Heart className={`h-5 w-5 ${votedForThis ? 'fill-current' : ''}`} />
               <span className="relative z-10">
                 {isVoting ? '...' : (votedForThis ? votedLabel : (hasVotedGender ? alreadyVotedMsg : voteLabel))}
               </span>
@@ -140,9 +129,10 @@ export function CandidateProfile({
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-12 w-12 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5"
+                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5 active:scale-[0.95]"
+                    aria-label={label}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className="h-4 w-4" />
                   </a>
                 ))}
               </div>
@@ -151,20 +141,17 @@ export function CandidateProfile({
         </div>
       </div>
 
-      {/* Gallery */}
       {candidate.gallery.length > 1 && (
-        <div className="mt-16">
-          <h3 className="mb-8 font-display text-2xl font-bold">{galleryLabel}</h3>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <div className="mt-12">
+          <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             {candidate.gallery.map((img, i) => (
               <button
                 key={i}
                 onClick={() => { setSelectedImg(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className={`overflow-hidden rounded-2xl border transition-all duration-300 ${
-                  selectedImg === i ? 'border-gold ring-2 ring-gold/20' : 'border-gold/10 hover:border-gold/40'
-                }`}
+                className="overflow-hidden rounded-2xl border border-gold/10 shadow-lg transition-all duration-300 hover:border-gold/30 hover:shadow-xl active:scale-[0.98]"
               >
-                <img src={img} alt="gallery" className="aspect-square w-full object-cover" />
+                <img src={img} alt={`${name} ${i + 1}`} className="w-full object-cover object-center" style={{ aspectRatio: 'auto', maxHeight: '300px' }} />
               </button>
             ))}
           </div>
