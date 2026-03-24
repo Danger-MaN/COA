@@ -92,18 +92,20 @@ function buildCandidates(): Candidate[] {
     const tw = readText(twitterFiles, genderFolder, name, 'twitter.txt');
     const ig = readText(instagramFiles, genderFolder, name, 'instagram.txt');
 
-    results.push({
-      id: `${info.gender[0]}-${encodeURIComponent(name)}`,
-      name: name, // Use folder name as-is (supports spaces)
-      bio: readText(bioFiles, genderFolder, name, 'bio.txt'),
-      gender: info.gender,
-      image: mainImg,
-      gallery: allImages,
-      facebook: fb || undefined,
-      twitter: tw || undefined,
-      instagram: ig || undefined,
-    });
-  }
+
+    // ابحث عن هذا الجزء داخل دالة buildCandidates
+  results.push({
+    id: `${info.gender[0]}-${encodeURIComponent(name)}`,
+    // التعديل هنا: استبدال كل شرطة بمسافة عند العرض
+    name: name.replace(/-/g, ' '), 
+    bio: readText(bioFiles, genderFolder, name, 'bio.txt'),
+    gender: info.gender,
+    image: mainImg,
+    gallery: allImages,
+    facebook: fb || undefined,
+    twitter: tw || undefined,
+    instagram: ig || undefined,
+  });
 
   return results;
 }
