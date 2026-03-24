@@ -35,11 +35,6 @@ const VotingPage = () => {
           <h2 className="font-display text-3xl font-bold"><span className="gold-text-gradient">{validGender === 'male' ? tr('male') : tr('female')}</span></h2>
         </div>
 
-        <div className="mb-8 flex items-center gap-3 rounded-xl border border-gold/20 bg-gold/5 px-5 py-3.5">
-          <AlertTriangle className="h-5 w-5 flex-shrink-0 text-gold" />
-          <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
-        </div>
-
         <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
           {candidatesList.map((c, i) => (
             <CandidateCard
