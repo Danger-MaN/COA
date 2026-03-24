@@ -1,8 +1,10 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
 import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
+// استيراد دوال الربط مع السيرفر من ملف data.ts
+import { fetchLiveVotes, updateLiveVote } from '@/lib/data'; 
 
 interface ProfileProps {
   candidate: Candidate;
@@ -21,58 +23,87 @@ interface ProfileProps {
   onVoteChange: () => void;
 }
 
-export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, bioLabel, onVoteChange }: ProfileProps) {
+export function CandidateProfile({ 
+  candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, 
+  backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, 
+  bioLabel, onVoteChange 
+}: ProfileProps) {
+  
+  // تعريف الحالات (States)
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [selectedImg, setSelectedImg] = useState(0);
+  
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // داخل مكون CandidateProfile
-  // استبدل handleVote و handleUndo بالتالي:
+  // تأثير لجلب الأصوات الحية فور تحميل الصفحة لضمان المصداقية
+  useEffect(() => {
+    async function loadVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+      }
+    }
+    loadVotes();
+  }, [candidate.id]);
 
+  // دالة التصويت (زيادة صوت)
   const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
 
-    // تحديث السيرفر أولاً
-    const newCount = await updateLiveVote(candidate.id, 'vote');
-  
-    const success = castVote(candidate.id, candidate.gender);
-    if (success) {
-      setVotes(getVotes(candidate.id) + newCount); // دمج القيمة الثابتة مع الحية
-      setHasVotedGender(true);
-      setVotedForThis(true);
-      onVoteChange();
-      toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+    try {
+      // 1. تحديث السيرفر أولاً
+      await updateLiveVote(candidate.id, 'vote');
+      
+      // 2. تحديث التخزين المحلي
+      const success = castVote(candidate.id, candidate.gender);
+      
+      if (success) {
+        // 3. إعادة جلب المجموع النهائي للتأكد
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        
+        setHasVotedGender(true);
+        setVotedForThis(true);
+        onVoteChange();
+        toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+      }
+    } catch (error) {
+      toast.error(lang === 'ar' ? "حدث خطأ في الاتصال" : "Connection error");
     }
   };
 
+  // دالة إلغاء التصويت (نقصان صوت)
   const handleUndo = async () => {
-    // تحديث السيرفر أولاً
-    const newCount = await updateLiveVote(candidate.id, 'undo');
+    try {
+      // 1. تحديث السيرفر بالخصم
+      await updateLiveVote(candidate.id, 'undo');
 
-    const success = undoVote(candidate.gender);
-    if (success) {
-      setVotes(getVotes(candidate.id) + newCount);
-      setHasVotedGender(false);
-      setVotedForThis(false);
-      onVoteChange();
-     toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      // 2. تحديث التخزين المحلي
+      const success = undoVote(candidate.gender);
+      
+      if (success) {
+        // 3. إعادة جلب المجموع النهائي
+        const latestLive = await fetchLiveVotes(candidate.id);
+        setVotes(getVotes(candidate.id) + latestLive);
+        
+        setHasVotedGender(false);
+        setVotedForThis(false);
+        onVoteChange();
+        toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
+      }
+    } catch (error) {
+      toast.error(lang === 'ar' ? "حدث خطأ أثناء الإلغاء" : "Error during undo");
     }
   };
-  
-  useEffect(() => {
-    async function loadVotes() {
-      const liveVotes = await fetchLiveVotes(candidate.id);
-      setVotes(getVotes(candidate.id) + liveVotes);
-    }
-    loadVotes();
-  }, [candidate.id]);
-
 
   const socials = [
     { icon: Facebook, url: candidate.facebook, label: 'Facebook' },
@@ -88,7 +119,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
-        {/* Images */}
+        {/* قسم الصور */}
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
             <img
@@ -98,7 +129,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
               style={{ aspectRatio: 'auto', maxHeight: '600px' }}
             />
           </div>
-          {/* Thumbnails */}
           {candidate.gallery.length > 1 && (
             <div className="flex gap-3 overflow-x-auto pb-2">
               {candidate.gallery.map((img, i) => (
@@ -116,7 +146,7 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
           )}
         </div>
 
-        {/* Info */}
+        {/* قسم المعلومات */}
         <div className="flex flex-col justify-center">
           <div className="mb-3 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{rank + 1}</span>
@@ -124,7 +154,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
           </div>
           <h2 className="font-display text-3xl font-bold md:text-4xl lg:text-5xl" style={{ lineHeight: '1.1' }}>{name}</h2>
 
-          {/* Bio */}
           {candidate.bio?.trim() && (
             <div className="mt-5 rounded-xl border border-gold/10 bg-gold/5 p-4">
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gold">{bioLabel}</h4>
@@ -134,7 +163,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
 
           <p className="mt-4 text-xl text-gold font-display">{votes} {votesLabel}</p>
 
-          {/* Vote / Undo buttons */}
           <div className="mt-8 flex gap-3">
             {votedForThis ? (
               <button
@@ -160,7 +188,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
             )}
           </div>
 
-          {/* Social links */}
           {socials.length > 0 && (
             <div className="mt-8 flex gap-3">
               {socials.map(({ icon: Icon, url, label }) => (
@@ -179,24 +206,6 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
           )}
         </div>
       </div>
-
-      {/* Gallery section */}
-      {candidate.gallery.length > 1 && (
-        <div className="mt-12">
-          <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-            {candidate.gallery.map((img, i) => (
-              <button
-                key={i}
-                onClick={() => { setSelectedImg(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className="overflow-hidden rounded-2xl border border-gold/10 shadow-lg transition-all duration-300 hover:border-gold/30 hover:shadow-xl active:scale-[0.98]"
-              >
-                <img src={img} alt={`${name} ${i + 1}`} className="w-full object-cover object-center" style={{ aspectRatio: 'auto', maxHeight: '300px' }} />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
