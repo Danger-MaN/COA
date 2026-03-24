@@ -1,10 +1,8 @@
-import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId } from '@/lib/data';
+import { ArrowRight, ArrowLeft, Heart, Facebook, Twitter, Instagram } from 'lucide-react';
+import { Candidate, getVotes, hasVoted, castVote, getVotedCandidateId, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState, useEffect } from 'react'; // إضافة useEffect
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-// استيراد دوال السيرفر
-import { fetchLiveVotes, updateLiveVote } from '@/lib/data'; 
 
 interface ProfileProps {
   candidate: Candidate;
@@ -23,65 +21,44 @@ interface ProfileProps {
   onVoteChange: () => void;
 }
 
-export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, votedLabel, votesLabel, backLabel, galleryLabel, rankLabel, alreadyVotedMsg, undoLabel, bioLabel, onVoteChange }: ProfileProps) {
+export function CandidateProfile({ 
+  candidate, lang, rank, onBack, voteLabel, votedLabel, 
+  votesLabel, backLabel, galleryLabel, rankLabel, 
+  alreadyVotedMsg, bioLabel, onVoteChange 
+}: ProfileProps) {
+  
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [selectedImg, setSelectedImg] = useState(0);
+  const [isVoting, setIsVoting] = useState(false);
+
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // جلب التصويتات الحية عند تحميل الصفحة
+  // تحديث البيانات عند فتح الملف الشخصي لضمان دقة الأرقام
   useEffect(() => {
-    async function loadLiveVotes() {
-      try {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        const staticVotes = getVotes(candidate.id);
-        setVotes(staticVotes + liveVotes);
-      } catch (error) {
-        console.error("Error loading live votes:", error);
-      }
-    }
-    loadLiveVotes();
+    fetchLiveVotes().then(() => {
+      setVotes(getVotes(candidate.id));
+    });
   }, [candidate.id]);
 
   const handleVote = async () => {
-    if (hasVotedGender) {
-      toast.error(alreadyVotedMsg);
-      return;
-    }
-    
-    try {
-      await updateLiveVote(candidate.id, 'vote');
-      const success = castVote(candidate.id, candidate.gender);
-      if (success) {
-        const latestLive = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + latestLive);
-        setHasVotedGender(true);
-        setVotedForThis(true);
-        onVoteChange();
-        toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
-      }
-    } catch (e) {
-      toast.error("Error connecting to server");
-    }
-  };
+    if (hasVotedGender || isVoting) return;
 
-  const handleUndo = async () => {
-    try {
-      await updateLiveVote(candidate.id, 'undo');
-      const success = undoVote(candidate.gender);
-      if (success) {
-        const latestLive = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + latestLive);
-        setHasVotedGender(false);
-        setVotedForThis(false);
-        onVoteChange();
-        toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
-      }
-    } catch (e) {
-      toast.error("Error connecting to server");
+    setIsVoting(true);
+    const success = await castVote(candidate.id, candidate.gender);
+    
+    if (success) {
+      setVotes(prev => prev + 1);
+      setHasVotedGender(true);
+      setVotedForThis(true);
+      onVoteChange();
+      toast.success(votedLabel);
+    } else {
+      toast.error("Failed to submit vote. Please try again.");
     }
+    setIsVoting(false);
   };
 
   const socials = [
@@ -91,114 +68,104 @@ export function CandidateProfile({ candidate, lang, rank, onBack, voteLabel, vot
   ].filter(s => s.url);
 
   return (
-    <div className="container max-w-5xl py-8 animate-fade-up">
-      <button onClick={onBack} className="mb-6 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground active:scale-[0.97]">
-        <BackArrow className="h-4 w-4" />
+    <div className=\"container py-8 md:py-12\">
+      <button 
+        onClick={onBack}
+        className=\"mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-gold\"
+      >
+        <BackArrow className=\"h-4 w-4\" />
         <span>{backLabel}</span>
       </button>
 
-      <div className="grid gap-8 md:grid-cols-2">
-        {/* Images - نفس التنسيق الأصلي تماماً */}
-        <div className="space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
-            <img
-              src={candidate.gallery[selectedImg] || candidate.image}
-              alt={name}
-              className="w-full object-cover object-center transition-all duration-500"
-              style={{ aspectRatio: 'auto', maxHeight: '600px' }}
+      <div className=\"grid gap-8 lg:grid-cols-12\">
+        {/* Main Image View */}
+        <div className=\"lg:col-span-5\">
+          <div className=\"relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl\">
+            <img 
+              src={candidate.gallery[selectedImg]} 
+              alt={name} 
+              className=\"h-full w-full object-cover object-center transition-all duration-700\"
             />
-          </div>
-          {/* Thumbnails */}
-          {candidate.gallery.length > 1 && (
-            <div className="flex gap-3 overflow-x-auto pb-2">
-              {candidate.gallery.map((img, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedImg(i)}
-                  className={`flex-shrink-0 overflow-hidden rounded-xl border-2 transition-all duration-300 active:scale-[0.95] ${
-                    selectedImg === i ? 'border-gold shadow-lg shadow-gold/20' : 'border-transparent opacity-60 hover:opacity-100'
-                  }`}
-                >
-                  <img src={img} alt={`${name} ${i + 1}`} className="h-20 w-20 object-cover object-center" />
-                </button>
-              ))}
+            <div className=\"absolute top-4 start-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md text-lg font-bold text-gold border border-gold/20 shadow-xl\">
+              #{rank + 1}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Info */}
-        <div className="flex flex-col justify-center">
-          <div className="mb-3 flex items-center gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{rank + 1}</span>
-            <span className="text-sm text-muted-foreground">{rankLabel} #{rank + 1}</span>
-          </div>
-          <h2 className="font-display text-3xl font-bold md:text-4xl lg:text-5xl" style={{ lineHeight: '1.1' }}>{name}</h2>
-
-          {candidate.bio?.trim() && (
-            <div className="mt-5 rounded-xl border border-gold/10 bg-gold/5 p-4">
-              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gold">{bioLabel}</h4>
-              <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-line">{candidate.bio}</p>
+        {/* Content Details */}
+        <div className=\"lg:col-span-7 flex flex-col\">
+          <div className=\"mb-6\">
+            <h2 className=\"font-display text-4xl font-bold md:text-5xl\">{name}</h2>
+            <div className=\"mt-4 flex flex-wrap items-center gap-6\">
+              <div className=\"flex flex-col\">
+                <span className=\"text-xs uppercase tracking-widest text-muted-foreground\">{votesLabel}</span>
+                <span className=\"text-2xl font-bold gold-text-gradient\">{votes}</span>
+              </div>
+              <div className=\"h-10 w-px bg-gold/20\" />
+              <div className=\"flex flex-col\">
+                <span className=\"text-xs uppercase tracking-widest text-muted-foreground\">{rankLabel}</span>
+                <span className=\"text-2xl font-bold\">#{rank + 1}</span>
+              </div>
             </div>
-          )}
+          </div>
 
-          <p className="mt-4 text-xl text-gold font-display">{votes} {votesLabel}</p>
+          <div className=\"mb-8 rounded-2xl border border-gold/10 bg-gold/5 p-6 backdrop-blur-sm\">
+            <h3 className=\"mb-3 flex items-center gap-2 font-display text-lg font-semibold\">
+              <span className=\"h-1.5 w-1.5 rounded-full bg-gold\" />
+              {bioLabel}
+            </h3>
+            <p className=\"leading-relaxed text-muted-foreground whitespace-pre-line\">{candidate.bio}</p>
+          </div>
 
-          <div className="mt-8 flex gap-3">
-            {votedForThis ? (
-              <button
-                onClick={handleUndo}
-                className="flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-8 py-3.5 font-display text-base font-semibold text-destructive transition-all duration-200 hover:bg-destructive/20 active:scale-[0.97]"
-              >
-                <Undo2 className="h-5 w-5" />
-                {undoLabel}
-              </button>
-            ) : (
-              <button
-                onClick={handleVote}
-                disabled={hasVotedGender}
-                className={`flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 font-display text-base font-semibold transition-all duration-200 active:scale-[0.97] ${
-                  hasVotedGender
-                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                    : 'gold-gradient text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-gold/20'
-                }`}
-              >
-                <Heart className={`h-5 w-5 ${hasVotedGender ? '' : 'fill-current'}`} />
-                {hasVotedGender ? votedLabel : voteLabel}
-              </button>
+          <div className=\"mt-auto space-y-6\">
+            <button
+              onClick={handleVote}
+              disabled={hasVotedGender || isVoting}
+              className={`group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-4 font-bold transition-all duration-500 ${
+                hasVotedGender 
+                  ? 'cursor-not-allowed bg-muted text-muted-foreground' 
+                  : 'gold-gradient text-primary-foreground shadow-lg shadow-gold/20 hover:scale-[1.02] hover:shadow-gold/40 active:scale-[0.98]'
+              }`}
+            >
+              <Heart className={`h-5 w-5 ${votedForThis ? 'fill-current' : ''} ${isVoting ? 'animate-pulse' : ''}`} />
+              <span className=\"relative z-10\">
+                {isVoting ? '...' : (votedForThis ? votedLabel : (hasVotedGender ? alreadyVotedMsg : voteLabel))}
+              </span>
+            </button>
+
+            {socials.length > 0 && (
+              <div className=\"flex items-center gap-4\">
+                {socials.map(({ icon: Icon, url, label }) => (
+                  <a
+                    key={label}
+                    href={url}
+                    target=\"_blank\"
+                    rel=\"noopener noreferrer\"
+                    className=\"flex h-12 w-12 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5\"
+                  >
+                    <Icon className=\"h-5 w-5\" />
+                  </a>
+                ))}
+              </div>
             )}
           </div>
-
-          {socials.length > 0 && (
-            <div className="mt-8 flex gap-3">
-              {socials.map(({ icon: Icon, url, label }) => (
-                <a
-                  key={label}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5 active:scale-[0.95]"
-                  aria-label={label}
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Gallery section - نفس التنسيق الأصلي تماماً */}
+      {/* Gallery */}
       {candidate.gallery.length > 1 && (
-        <div className="mt-12">
-          <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+        <div className=\"mt-16\">
+          <h3 className=\"mb-8 font-display text-2xl font-bold\">{galleryLabel}</h3>
+          <div className=\"grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5\">
             {candidate.gallery.map((img, i) => (
               <button
                 key={i}
                 onClick={() => { setSelectedImg(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className="overflow-hidden rounded-2xl border border-gold/10 shadow-lg transition-all duration-300 hover:border-gold/30 hover:shadow-xl active:scale-[0.98]"
+                className={`overflow-hidden rounded-2xl border transition-all duration-300 ${
+                  selectedImg === i ? 'border-gold ring-2 ring-gold/20' : 'border-gold/10 hover:border-gold/40'
+                }`}
               >
-                <img src={img} alt={`${name} ${i + 1}`} className="w-full object-cover object-center" style={{ aspectRatio: 'auto', maxHeight: '300px' }} />
+                <img src={img} alt=\"gallery\" className=\"aspect-square w-full object-cover\" />
               </button>
             ))}
           </div>
