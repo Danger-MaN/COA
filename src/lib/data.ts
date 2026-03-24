@@ -7,6 +7,7 @@ export interface Candidate {
   gender: Gender;
   image: string;
   gallery: string[];
+  votes?: number; // أضفنا هذا الحقل لتخزين المجموع النهائي
   facebook?: string;
   twitter?: string;
   instagram?: string;
@@ -70,7 +71,7 @@ function buildCandidates(): Candidate[] {
     const mainImg = mainImages[path];
 
     results.push({
-      id: `${info.gender[0]}-${folderName}`, // ID صافي يدعم العربي والشرطات
+      id: `${info.gender[0]}-${folderName}`,
       name: folderName.replace(/-/g, ' '), 
       bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
       gender: info.gender,
@@ -98,6 +99,41 @@ const votesMap: Record<string, number> = (() => {
   return map;
 })();
 
+/* ── Live Data Fetching ── */
+
+export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
+  try {
+    const response = await fetch('/.netlify/functions/vote-api?action=getAll');
+    if (!response.ok) return {};
+    return await response.json();
+  } catch {
+    return {};
+  }
+}
+
+export async function fetchLiveVotes(candidateId: string): Promise<number> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}`);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.votes || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<number> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
+      method: 'POST'
+    });
+    const data = await response.json();
+    return data.votes || 0;
+  } catch {
+    return 0;
+  }
+}
+
 /* ── Exported Functions ── */
 
 export function getVotes(candidateId: string): number {
@@ -113,6 +149,27 @@ export function getCandidateById(id: string | undefined): Candidate | undefined 
   const targetId = decodeURIComponent(id);
   return candidates.find(c => c.id === targetId || decodeURIComponent(c.id) === targetId);
 }
+
+// الدالة الأهم لربط الواجهة الرئيسية بالسيرفر والترتيب الصحيح
+export async function getCandidatesLive(gender: Gender): Promise<Candidate[]> {
+  const liveVotesMap = await fetchAllLiveVotes();
+  
+  return candidates
+    .filter(c => c.gender === gender)
+    .map(c => ({
+      ...c,
+      votes: (votesMap[c.id] || 0) + (liveVotesMap[c.id] || 0)
+    }))
+    .sort((a, b) => (b.votes || 0) - (a.votes || 0));
+}
+
+// دالة التوب 5 المتوافقة مع السيرفر
+export async function getTop5Live(gender: Gender): Promise<Candidate[]> {
+  const allSorted = await getCandidatesLive(gender);
+  return allSorted.slice(0, 5);
+}
+
+/* ── Local Persistence (Logic unchanged) ── */
 
 export function hasVoted(gender: Gender): boolean {
   try {
@@ -153,39 +210,13 @@ export function undoVote(gender: Gender): boolean {
   return true;
 }
 
+// دوال قديمة للتوافق (Legacy Support)
 export function getCandidatesSorted(gender: Gender): Candidate[] {
   return [...candidates]
     .filter(c => c.gender === gender)
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
 
-// أضف هذه الدالة في نهاية ملف data.ts
-export async function fetchLiveVotes(candidateId: string): Promise<number> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}`);
-    if (!response.ok) return 0;
-    const data = await response.json();
-    return data.votes || 0;
-  } catch {
-    return 0;
-  }
-}
-
-// دالة لإرسال الطلب (تصويت أو تراجع)
-export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<number> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
-      method: 'POST'
-    });
-    const data = await response.json();
-    return data.votes;
-  } catch {
-    return 0;
-  }
-}
-
-
-// هذه هي الدالة التي كانت مفقودة وتسببت في فشل الـ Build
 export function getTop5(gender: Gender): Candidate[] {
-  return getCandidatesSorted(gender).slice(0, 10);
+  return getCandidatesSorted(gender).slice(0, 5);
 }
