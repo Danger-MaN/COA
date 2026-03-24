@@ -23,6 +23,7 @@ const twitterFiles = import.meta.glob<string>('/src/assets/candidates/*/*/twitte
 const instagramFiles = import.meta.glob<string>('/src/assets/candidates/*/*/instagram.txt', { eager: true, query: '?raw', import: 'default' });
 
 /* ── Helper Functions ── */
+
 function parsePath(path: string): { gender: Gender; folderName: string } | null {
   const decodedPath = decodeURIComponent(path);
   const match = decodedPath.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
@@ -71,7 +72,7 @@ function buildCandidates(): Candidate[] {
 
     results.push({
       id: `${info.gender[0]}-${folderName}`,
-      name: folderName.replace(/-/g, ' '),
+      name: folderName.replace(/-/g, ' '), 
       bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
       gender: info.gender,
       image: mainImg,
@@ -99,6 +100,7 @@ const votesMap: Record<string, number> = (() => {
 })();
 
 /* ── Live Data Fetching (Single Implementation) ── */
+
 export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
   try {
     const controller = new AbortController();
@@ -158,34 +160,26 @@ export function getCandidateById(id: string | undefined): Candidate | undefined 
   return candidates.find(c => c.id === targetId || decodeURIComponent(c.id) === targetId);
 }
 
-/* ── Functions that combine static + live votes (given liveVotes) ── */
-export function getCandidatesWithLive(gender: Gender, liveVotes: Record<string, number>): Candidate[] {
+/* ── Async Functions that combine static + live votes ── */
+export async function getCandidatesLive(gender: Gender): Promise<Candidate[]> {
+  const liveVotesMap = await fetchAllLiveVotes();
+  
   return candidates
     .filter(c => c.gender === gender)
     .map(c => ({
       ...c,
-      votes: (votesMap[c.id] || 0) + (liveVotes[c.id] || 0)
+      votes: (votesMap[c.id] || 0) + (liveVotesMap[c.id] || 0)
     }))
     .sort((a, b) => (b.votes || 0) - (a.votes || 0));
 }
 
-export function getTop5WithLive(gender: Gender, liveVotes: Record<string, number>): Candidate[] {
-  const all = getCandidatesWithLive(gender, liveVotes);
-  return all.slice(0, 5);
-}
-
-/* ── Async Functions that fetch live votes internally (for backwards compatibility or direct use) ── */
-export async function getCandidatesLive(gender: Gender): Promise<Candidate[]> {
-  const liveVotes = await fetchAllLiveVotes();
-  return getCandidatesWithLive(gender, liveVotes);
-}
-
 export async function getTop5Live(gender: Gender): Promise<Candidate[]> {
-  const liveVotes = await fetchAllLiveVotes();
-  return getTop5WithLive(gender, liveVotes);
+  const allSorted = await getCandidatesLive(gender);
+  return allSorted.slice(0, 5);
 }
 
 /* ── Local Persistence (unchanged) ── */
+
 export function hasVoted(gender: Gender): boolean {
   try {
     const voted = localStorage.getItem('taj_voted');
