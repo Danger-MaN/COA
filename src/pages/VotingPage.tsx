@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesSorted, Gender, hasVoted, getVotedCandidateId } from '@/lib/data';
+import { getCandidatesLive, Gender, hasVoted, getVotedCandidateId, Candidate } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 
 const VotingPage = () => {
@@ -13,11 +13,33 @@ const VotingPage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
-  const sorted = getCandidatesSorted(validGender);
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
+
+  const fetchCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getCandidatesLive(validGender);
+      setCandidates(data);
+    } catch (error) {
+      console.error('Error fetching candidates:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [validGender]);
+
+  useEffect(() => {
+    fetchCandidates();
+  }, [fetchCandidates]);
+
+  // إعادة جلب البيانات عند التصويت (تحديث refreshKey)
+  useEffect(() => {
+    if (refreshKey > 0) fetchCandidates();
+  }, [refreshKey, fetchCandidates]);
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -52,19 +74,25 @@ const VotingPage = () => {
           <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
-          {sorted.map((c, i) => (
-            <CandidateCard
-              key={`${c.id}-${refreshKey}`}
-              candidate={c}
-              lang={lang}
-              rank={i}
-              votedLabel={tr('voted')}
-              votesLabel={tr('votes')}
-              onSelect={(id) => navigate(`/candidate/${id}`)}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
+            {candidates.map((c, i) => (
+              <CandidateCard
+                key={`${c.id}-${refreshKey}`}
+                candidate={c}
+                lang={lang}
+                rank={i}
+                votedLabel={tr('voted')}
+                votesLabel={tr('votes')}
+                onSelect={(id) => navigate(`/candidate/${id}`)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <footer className="border-t border-gold/20 py-8">
