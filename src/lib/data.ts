@@ -161,5 +161,5 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
 
 // هذه هي الدالة التي كانت مفقودة وتسببت في فشل الـ Build
 export function getTop5(gender: Gender): Candidate[] {
-  return getCandidatesSorted(gender).slice(0, 5);
+  return getCandidatesSorted(gender).slice(0, 10);
 }
