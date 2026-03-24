@@ -41,18 +41,18 @@ export function CandidateProfile({
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0); // seconds
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // دالة لتحديث العداد
+  // دالة لتحديث الوقت المتبقي
   const updateCooldown = () => {
     const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
     if (voteTime && votedForThis) {
       const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
-      const remaining = Math.max(0, 3600 - elapsed); // 3600 ثانية = ساعة
+      const remaining = Math.max(0, 3600 - elapsed);
       setCooldownRemaining(remaining);
       if (remaining <= 0 && intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -74,9 +74,12 @@ export function CandidateProfile({
       intervalRef.current = setInterval(updateCooldown, 1000);
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [votedForThis, candidate.gender]);
+  }, [votedForThis, candidate.gender, cooldownRemaining]); // إضافة cooldownRemaining كـ dependency لضمان إعادة ضبط المؤقت عند انتهاء المهلة
 
   // جلب الأصوات الحية عند تحميل المكون
   useEffect(() => {
@@ -101,7 +104,6 @@ export function CandidateProfile({
       const newLiveVotes = await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
-        // حفظ وقت التصويت
         localStorage.setItem(`taj_vote_time_${candidate.gender}`, Date.now().toString());
         setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(true);
@@ -115,7 +117,6 @@ export function CandidateProfile({
   };
 
   const handleUndo = async () => {
-    // التحقق من وقت التصويت
     const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
     if (voteTime) {
       const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
@@ -129,12 +130,10 @@ export function CandidateProfile({
         return;
       }
     }
-    // إذا مرت ساعة أو لم يوجد وقت محفوظ
     try {
       const newLiveVotes = await updateLiveVote(candidate.id, 'undo');
       const success = undoVote(candidate.gender);
       if (success) {
-        // إزالة وقت التصويت من localStorage
         localStorage.removeItem(`taj_vote_time_${candidate.gender}`);
         setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(false);
@@ -153,7 +152,6 @@ export function CandidateProfile({
     { icon: Instagram, url: candidate.instagram, label: 'Instagram' },
   ].filter(s => s.url);
 
-  // دالة لتنسيق العداد
   const formatCooldown = () => {
     const minutes = Math.floor(cooldownRemaining / 60);
     const seconds = Math.floor(cooldownRemaining % 60);
