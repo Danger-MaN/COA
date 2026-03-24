@@ -27,12 +27,10 @@ export function CandidateProfile({
   alreadyVotedMsg, undoLabel, bioLabel, onVoteChange 
 }: ProfileProps) {
   
-  // ربط الأصوات والحالة بالسيرفر
   const [votes, setVotes] = useState(candidate.votes || 0);
   const [isVotedForThis, setIsVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [selectedImg, setSelectedImg] = useState(0);
 
-  // تحديث البيانات عند تغيير المتسابق
   useEffect(() => {
     setVotes(candidate.votes || 0);
     setIsVotedForThis(getVotedCandidateId(candidate.gender) === candidate.id);
@@ -44,7 +42,6 @@ export function CandidateProfile({
       return;
     }
 
-    // تحديث فوري للواجهة (Optimistic)
     setVotes(prev => prev + 1);
     setIsVotedForThis(true);
 
@@ -76,59 +73,59 @@ export function CandidateProfile({
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
   return (
-    <div className=\"container py-8\">
-      <button onClick={onBack} className=\"mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground\">
-        <BackArrow className=\"h-5 w-5\" />
-        <span className=\"font-medium\">{backLabel}</span>
+    <div className="container py-8">
+      <button onClick={onBack} className="mb-8 flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground">
+        <BackArrow className="h-5 w-5" />
+        <span className="font-medium">{backLabel}</span>
       </button>
 
-      <div className=\"grid gap-12 lg:grid-cols-2\">
-        <div className=\"space-y-6\">
-          <div className=\"relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl\">
-            <img src={candidate.gallery[selectedImg]} alt={name} className=\"h-full w-full object-cover object-center\" />
+      <div className="grid gap-12 lg:grid-cols-2">
+        <div className="space-y-6">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-3xl border border-gold/20 shadow-2xl">
+            <img src={candidate.gallery[selectedImg]} alt={name} className="h-full w-full object-cover object-center" />
           </div>
           
           {candidate.gallery.length > 1 && (
-            <div className=\"flex gap-3 overflow-x-auto pb-2\">
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
               {candidate.gallery.map((img, i) => (
                 <button 
                   key={i} 
                   onClick={() => setSelectedImg(i)}
                   className={`relative w-20 aspect-[3/4] flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all ${selectedImg === i ? 'border-gold' : 'border-transparent'}`}
                 >
-                  <img src={img} className=\"h-full w-full object-cover\" />
+                  <img src={img} className="h-full w-full object-cover" alt="" />
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        <div className=\"flex flex-col justify-center space-y-8\">
+        <div className="flex flex-col justify-center space-y-8">
           <div>
-            <div className=\"mb-2 flex items-center gap-3\">
-              <span className=\"rounded-full bg-gold/10 px-4 py-1 text-sm font-bold text-gold\">
+            <div className="mb-2 flex items-center gap-3">
+              <span className="rounded-full bg-gold/10 px-4 py-1 text-sm font-bold text-gold border border-gold/20">
                 {rankLabel} #{rank + 1}
               </span>
-              <span className=\"text-sm font-medium text-muted-foreground\">
+              <span className="text-sm font-medium text-muted-foreground">
                 {votes.toLocaleString()} {votesLabel}
               </span>
             </div>
-            <h2 className=\"font-display text-5xl font-bold\">{name}</h2>
+            <h2 className="font-display text-5xl font-bold">{name}</h2>
           </div>
 
-          <div className=\"rounded-2xl border border-gold/10 bg-card/50 p-6\">
-            <h3 className=\"mb-3 font-display text-lg font-semibold text-gold\">{bioLabel}</h3>
-            <p className=\"text-lg leading-relaxed text-muted-foreground italic\">\"{candidate.bio[lang] || candidate.bio['ar']}\"</p>
+          <div className="rounded-2xl border border-gold/10 bg-card/50 p-6">
+            <h3 className="mb-3 font-display text-lg font-semibold text-gold">{bioLabel}</h3>
+            <p className="text-lg leading-relaxed text-muted-foreground italic">"{candidate.bio[lang] || candidate.bio['ar']}"</p>
           </div>
 
-          <div className=\"flex flex-wrap gap-4\">
+          <div className="flex flex-wrap gap-4">
             {isVotedForThis ? (
-              <button onClick={handleUndo} className=\"flex flex-1 items-center justify-center gap-3 rounded-2xl border-2 border-gold/50 py-4 font-display text-xl font-bold text-gold\">
-                <Undo2 className=\"h-6 w-6\" /> {undoLabel}
+              <button onClick={handleUndo} className="flex flex-1 items-center justify-center gap-3 rounded-2xl border-2 border-gold/50 py-4 font-display text-xl font-bold text-gold transition-all active:scale-95">
+                <Undo2 className="h-6 w-6" /> {undoLabel}
               </button>
             ) : (
-              <button onClick={handleVote} className=\"gold-gradient flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 font-display text-xl font-bold text-primary-foreground shadow-xl\">
-                <Heart className=\"h-6 w-6\" /> {voteLabel}
+              <button onClick={handleVote} className="gold-gradient flex flex-1 items-center justify-center gap-3 rounded-2xl py-4 font-display text-xl font-bold text-primary-foreground shadow-xl transition-all active:scale-95">
+                <Heart className="h-6 w-6" /> {voteLabel}
               </button>
             )}
           </div>
