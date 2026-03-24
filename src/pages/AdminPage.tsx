@@ -81,7 +81,7 @@ const AdminPage = () => {
                 value={candidateId}
                 onChange={(e) => setCandidateId(e.target.value)}
                 className="w-full rounded-xl border border-gold/20 bg-background px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gold"
-                placeholder="مثال: m-ahmed"
+                placeholder="m-Idris-Magdi"
                 required
               />
             </div>
