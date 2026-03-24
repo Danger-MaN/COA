@@ -68,7 +68,6 @@ const Index = () => {
             lang={lang}
             votesLabel={tr('votes')}
             onSelect={handleSelect}
-            limit={10}   // عرض أول 10
           />
         </div>
       </section>
