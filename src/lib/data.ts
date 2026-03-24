@@ -49,8 +49,11 @@ const instagramFiles = import.meta.glob<string>(
 );
 
 /* ── Functions ── */
+
+// تعديل Regex ليكون أكثر مرونة مع الحروف العربية والرموز
 function parsePath(path: string): { gender: Gender; folderName: string } | null {
-  const match = path.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//);
+  const normalizedPath = decodeURIComponent(path);
+  const match = normalizedPath.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//i);
   if (!match) return null;
   return {
     gender: match[1].toLowerCase() as Gender,
@@ -58,11 +61,10 @@ function parsePath(path: string): { gender: Gender; folderName: string } | null 
   };
 }
 
-function readText(files: Record<string, string>, gender: string, name: string, file: string): string {
-  // نقوم بالبحث عن المفتاح الذي ينتهي بـ /اسم_المجلد/اسم_الملف
-  // هذا يتجنب مشاكل التشفير (Encoding) في الحروف العربية
-  const targetSuffix = `/${gender}/${name}/${file}`;
-  const key = Object.keys(files).find(k => k.endsWith(targetSuffix));
+// تعديل دالة القراءة للبحث الذكي عن المفاتيح لتجنب مشاكل الـ Encoding
+function readText(files: Record<string, string>, genderFolder: string, folderName: string, fileName: string): string {
+  const targetPath = `/${genderFolder}/${folderName}/${fileName}`.toLowerCase();
+  const key = Object.keys(files).find(k => decodeURIComponent(k).toLowerCase().endsWith(targetPath));
   return (key ? files[key] : '').trim();
 }
 
@@ -73,6 +75,7 @@ function buildCandidates(): Candidate[] {
   for (const path of Object.keys(mainImages)) {
     const info = parsePath(path);
     if (!info) continue;
+
     const key = `${info.gender}-${info.folderName}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -80,17 +83,17 @@ function buildCandidates(): Candidate[] {
     const genderFolder = info.gender === 'male' ? 'Male' : 'Female';
     const folderName = info.folderName;
 
-    const galleryPrefix = `/src/assets/candidates/${genderFolder}/${folderName}/gallery/`;
+    // تجميع الصور
+    const galleryPrefix = `/src/assets/candidates/${genderFolder}/${folderName}/gallery/`.toLowerCase();
     const gallery = Object.entries(galleryImages)
-      .filter(([p]) => p.startsWith(galleryPrefix))
+      .filter(([p]) => decodeURIComponent(p).toLowerCase().includes(galleryPrefix))
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([, url]) => url);
 
     const mainImg = mainImages[path];
-    
+
     results.push({
       id: `${info.gender[0]}-${encodeURIComponent(folderName)}`,
-      // تحويل الشرطة لمسافة عند العرض فقط
       name: folderName.replace(/-/g, ' '), 
       bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
       gender: info.gender,
@@ -104,23 +107,18 @@ function buildCandidates(): Candidate[] {
   return results;
 }
 
-// تصحيح مكان التصدير ليكون خارج الدالة
 export const candidates: Candidate[] = buildCandidates();
 
 /* ── Votes ── */
-const votesMap = (() => {
-  const originalFolderName = decodeURIComponent(c.id.slice(2));
-  // نستخدم الاسم الأصلي (بما فيه من شرطات وعربي) للبحث في الملفات
-  const raw = readText(voteFiles, genderFolder, originalFolderName, 'votes.txt');
-  
-  const result: Record<string, number> = {};
-  for (const c of candidates) {
+const votesMap: Record<string, number> = (() => {
+  const map: Record<string, number> = {};
+  candidates.forEach(c => {
     const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
-    const originalFolderName = decodeURIComponent(c.id.slice(2));
-    const raw = readText(voteFiles, genderFolder, originalFolderName, 'votes.txt');
-    result[c.id] = parseInt(raw, 10) || 0;
-  }
-  return result;
+    const folderName = decodeURIComponent(c.id.slice(2));
+    const raw = readText(voteFiles, genderFolder, folderName, 'votes.txt');
+    map[c.id] = parseInt(raw, 10) || 0;
+  });
+  return map;
 })();
 
 export function getVotes(candidateId: string): number {
@@ -131,56 +129,50 @@ export function getAllVotes(): Record<string, number> {
   return { ...votesMap };
 }
 
+// باقي الدوال (hasVoted, castVote, الخ) تبقى كما هي في الكود السابق
 export function hasVoted(gender: Gender): boolean {
-  const voted = localStorage.getItem('taj_voted');
-  if (!voted) return false;
-  const map = JSON.parse(voted);
-  return !!map[gender];
+  try {
+    const voted = localStorage.getItem('taj_voted');
+    return voted ? !!JSON.parse(voted)[gender] : false;
+  } catch { return false; }
 }
 
 export function getVotedCandidateId(gender: Gender): string | null {
-  const stored = localStorage.getItem('taj_voted_candidate');
-  if (!stored) return null;
-  const map = JSON.parse(stored);
-  return map[gender] || null;
+  try {
+    const stored = localStorage.getItem('taj_voted_candidate');
+    return stored ? JSON.parse(stored)[gender] || null : null;
+  } catch { return null; }
 }
 
 export function castVote(candidateId: string, gender: Gender): boolean {
   if (hasVoted(gender)) return false;
-  
   const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   votedMap[gender] = true;
   localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-
   const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   candidateMap[gender] = candidateId;
   localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-
   document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
   return true;
 }
 
 export function undoVote(gender: Gender): boolean {
-  const candidateId = getVotedCandidateId(gender);
-  if (!candidateId) return false;
-
+  const id = getVotedCandidateId(gender);
+  if (!id) return false;
   const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   delete votedMap[gender];
   localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-
   const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   delete candidateMap[gender];
   localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-
   document.cookie = `voted_${gender}=; max-age=0; path=/`;
   return true;
 }
 
 export function getCandidatesSorted(gender: Gender): Candidate[] {
-  const votes = getAllVotes();
-  return candidates
+  return [...candidates]
     .filter(c => c.gender === gender)
-    .sort((a, b) => (votes[b.id] || 0) - (votes[a.id] || 0));
+    .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
 
 export function getTop5(gender: Gender): Candidate[] {
