@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 interface ProfileProps {
-  candidate: Candidate;      // يجب أن يحتوي candidate على votes محدثة
+  candidate: Candidate;
   lang: Lang;
   rank: number;
   onBack: () => void;
@@ -41,7 +41,6 @@ export function CandidateProfile({
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // حالة التصويت (محلية)
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
 
@@ -56,7 +55,7 @@ export function CandidateProfile({
       if (success) {
         setHasVotedGender(true);
         setVotedForThis(true);
-        onVoteChange(); // يخبر الصفحة الأم بإعادة جلب البيانات
+        onVoteChange();
         toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
       }
     } catch (e) {
