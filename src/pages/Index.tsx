@@ -1,40 +1,39 @@
-import { useState, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { HeroSection } from '@/components/HeroSection';
 import { Top5Section } from '@/components/Top5Section';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { useVotes } from '@/context/VotesContext';
 import { candidates, getVotes } from '@/lib/data';
 import { Candidate } from '@/lib/data';
 
 const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
+  const [refreshKey, setRefreshKey] = useState(0);
   const navigate = useNavigate();
-  const { liveVotes, refreshLiveVotes } = useVotes();
 
-  // حساب top5 للمتقدمين
-  const topMale = useMemo(() => {
-    const maleCandidates = candidates.filter(c => c.gender === 'male');
-    const withVotes = maleCandidates.map(c => ({
-      ...c,
-      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
-    }));
-    return withVotes.sort((a, b) => b.votes! - a.votes!).slice(0, 5);
-  }, [liveVotes]);
+  // نحسب المرشحين مع إضافة الأصوات الثابتة فقط (لأن الأصوات الحية ستجلب داخل Top5Section)
+  const allMale = useMemo(() => {
+    return candidates
+      .filter(c => c.gender === 'male')
+      .map(c => ({
+        ...c,
+        votes: getVotes(c.id)  // نمرر الأصوات الثابتة فقط، الأصوات الحية ستضاف داخل Top5Section
+      }));
+  }, [candidates]);
 
-  const topFemale = useMemo(() => {
-    const femaleCandidates = candidates.filter(c => c.gender === 'female');
-    const withVotes = femaleCandidates.map(c => ({
-      ...c,
-      votes: (getVotes(c.id) || 0) + (liveVotes[c.id] || 0)
-    }));
-    return withVotes.sort((a, b) => b.votes! - a.votes!).slice(0, 5);
-  }, [liveVotes]);
+  const allFemale = useMemo(() => {
+    return candidates
+      .filter(c => c.gender === 'female')
+      .map(c => ({
+        ...c,
+        votes: getVotes(c.id)
+      }));
+  }, [candidates]);
 
-  const onVoteChange = () => refreshLiveVotes();
+  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -57,20 +56,20 @@ const Index = () => {
       <section className="container py-12">
         <div className="rounded-2xl border border-gold/10 bg-card/50 p-6 shadow-xl backdrop-blur-sm md:p-8">
           <Top5Section
-            key={`top5-m-${Object.keys(liveVotes).length}`}
+            key={`top5-m-${refreshKey}`}
             title={tr('top5')}
             genderLabel={tr('male')}
-            candidates={topMale}
+            candidates={allMale}
             lang={lang}
             votesLabel={tr('votes')}
             onSelect={(id) => navigate(`/candidate/${id}`)}
           />
           <div className="my-6 h-px w-full bg-gold/10" />
           <Top5Section
-            key={`top5-f-${Object.keys(liveVotes).length}`}
+            key={`top5-f-${refreshKey}`}
             title={tr('top5')}
             genderLabel={tr('female')}
-            candidates={topFemale}
+            candidates={allFemale}
             lang={lang}
             votesLabel={tr('votes')}
             onSelect={(id) => navigate(`/candidate/${id}`)}
