@@ -1,41 +1,54 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateProfile } from '@/components/CandidateProfile';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { candidates, getCandidatesLive } from '@/lib/data';
+import { getCandidatesLive, Candidate } from '@/lib/data';
 
 const CandidatePage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { lang, toggleLang, tr, isRtl } = useLanguage();
-  const { theme, toggleTheme, isDark } = useTheme();
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [currentRank, setCurrentRank] = useState(0);
+  const { lang, tr, isRtl, toggleLang } = useLanguage();
+  const { toggleTheme, isDark } = useTheme();
+  
+  const [candidate, setCandidate] = useState<Candidate | null>(null);
+  const [rank, setRank] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
-  const candidate = candidates.find(c => c.id === id);
+  const loadCandidate = useCallback(async () => {
+    // نجلب القائمة كاملة لنعرف الترتيب الصحيح والأصوات الحية
+    const all = await getCandidatesLive('male'); // ستحتاج لتعديل data.ts ليدعم جلب النوعين أو البحث الذكي
+    const found = all.find(c => c.id === id) || (await getCandidatesLive('female')).find(c => c.id === id);
+    
+    if (!found) {
+      navigate('/');
+      return;
+    }
+
+    // حساب الرتبة الحالية
+    const sameGenderList = await getCandidatesLive(found.gender);
+    const currentRank = sameGenderList.findIndex(c => c.id === id);
+    
+    setCandidate(found);
+    setRank(currentRank);
+    setIsLoading(false);
+  }, [id, navigate]);
 
   useEffect(() => {
-    if (candidate) {
-      getCandidatesLive(candidate.gender).then(sorted => {
-        const index = sorted.findIndex(c => c.id === candidate.id);
-        setCurrentRank(index);
-      });
-    }
-  }, [candidate, refreshKey]);
+    loadCandidate();
+  }, [loadCandidate]);
 
+  if (isLoading) return <div className="min-h-screen flex items-center justify-center bg-background text-gold">Loading Profile...</div>;
   if (!candidate) return null;
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
       <Header siteName={tr('siteName')} isDark={isDark} toggleTheme={toggleTheme} lang={lang} toggleLang={toggleLang} darkModeLabel={tr('darkMode')} lightModeLabel={tr('lightMode')} />
       <CandidateProfile
-        key={`${id}-${refreshKey}`}
         candidate={candidate}
         lang={lang}
-        rank={currentRank}
+        rank={rank}
         onBack={() => navigate(`/vote/${candidate.gender}`)}
         voteLabel={tr('vote')}
         votedLabel={tr('voted')}
@@ -46,7 +59,7 @@ const CandidatePage = () => {
         bioLabel={tr('bio')}
         alreadyVotedMsg={tr('alreadyVoted')}
         undoLabel={tr('undoVote')}
-        onVoteChange={onVoteChange}
+        onVoteChange={loadCandidate}
       />
     </div>
   );
