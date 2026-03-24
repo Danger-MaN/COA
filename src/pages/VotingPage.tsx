@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'; // أضفنا useEffect
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesSorted, Gender, fetchLiveVotes } from '@/lib/data'; // استيراد fetchLiveVotes
+import { getCandidatesSorted, Gender, fetchLiveVotes } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
 
 const VotingPage = () => {
@@ -13,17 +13,10 @@ const VotingPage = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(true); // حالة التحميل
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        await fetchLiveVotes();
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    init();
+    fetchLiveVotes().finally(() => setLoading(false));
   }, []);
 
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
@@ -31,10 +24,10 @@ const VotingPage = () => {
   const sorted = getCandidatesSorted(validGender);
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-gold border-t-transparent" />
       </div>
     );
   }
