@@ -1,38 +1,29 @@
-import { useState, useCallback, useEffect } from 'react'; // أضفنا useEffect
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { HeroSection } from '@/components/HeroSection';
 import { Top5Section } from '@/components/Top5Section';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getTop5, fetchLiveVotes } from '@/lib/data'; // استيراد fetchLiveVotes
+import { getTop5, fetchLiveVotes } from '@/lib/data';
 
 const Index = () => {
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(true); // حالة التحميل
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  // جلب البيانات عند تحميل المكون لأول مرة
   useEffect(() => {
-    const init = async () => {
-      try {
-        await fetchLiveVotes(); // جلب الأصوات من السيرفر
-      } finally {
-        setIsLoading(false); // إيقاف التحميل سواء نجح الجلب أو فشل
-      }
-    };
-    init();
+    fetchLiveVotes().finally(() => setLoading(false));
   }, []);
 
   const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
 
-  // شاشة تحميل بسيطة وأنيقة
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-gold border-t-transparent"></div>
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-gold border-t-transparent" />
       </div>
     );
   }
@@ -82,7 +73,7 @@ const Index = () => {
 
       <footer className="border-t border-gold/20 py-8">
         <div className="container text-center">
-          <p className="text-sm text-muted-foreground italic">AUREUS © 2026</p>
+          <p className="text-sm text-muted-foreground italic tracking-widest">AUREUS © 2026</p>
         </div>
       </footer>
     </div>
