@@ -1,4 +1,4 @@
-import { Candidate, hasVoted, getVotedCandidateId } from '@/lib/data';
+import { Candidate, getVotedCandidateId } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { Heart, Check } from 'lucide-react';
 
@@ -13,7 +13,6 @@ interface CandidateCardProps {
 
 export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
   // نستخدم candidate.votes التي مررناها من getCandidatesLive في صفحة التصويت
-  // وإذا لم تكن موجودة نستخدم القيمة الافتراضية 0
   const currentVotes = candidate.votes || 0; 
   
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
@@ -50,9 +49,9 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
         </div>
       </div>
       <div className="p-4">
-        <h3 className=\"font-display text-base font-semibold truncate\">{name}</h3>
-        <div className=\"mt-1 flex items-center justify-between\">
-          <p className=\"text-sm text-muted-foreground\">
+        <h3 className="font-display text-base font-semibold truncate">{name}</h3>
+        <div className="mt-1 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
             {currentVotes} {votesLabel}
           </p>
         </div>
