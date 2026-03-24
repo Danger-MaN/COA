@@ -14,7 +14,6 @@ interface Top5Props {
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-
   return (
     <div className="mb-2">
       <div className="mb-4 flex items-center gap-2">
