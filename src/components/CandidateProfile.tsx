@@ -1,5 +1,5 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote } from '@/lib/data';
+import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
@@ -49,7 +49,8 @@ export function CandidateProfile({
     async function loadLiveVotes() {
       try {
         const liveVotes = await fetchLiveVotes(candidate.id);
-        setVotes(getVotes(candidate.id) + liveVotes);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
       } catch (error) {
         console.error("Error loading live votes:", error);
       }
@@ -63,7 +64,6 @@ export function CandidateProfile({
       return;
     }
     try {
-      // تحديث السيرفر والحصول على العدد الجديد للأصوات الحية مباشرة
       const newLiveVotes = await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
