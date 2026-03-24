@@ -2,3 +2,7 @@
   external_node_modules = ["@netlify/blobs"]
   node_bundler = "esbuild"
   
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
