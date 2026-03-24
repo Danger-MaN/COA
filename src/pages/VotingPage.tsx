@@ -1,36 +1,44 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/Header';
 import { CandidateCard } from '@/components/CandidateCard';
 import { useLanguage } from '@/hooks/useLanguage';
 import { useTheme } from '@/hooks/useTheme';
-import { getCandidatesSorted, getCandidatesWithLive, Gender, Candidate } from '@/lib/data';
+import { getCandidatesLive, Gender, Candidate } from '@/lib/data';
 import { ArrowLeft, ArrowRight, AlertTriangle } from 'lucide-react';
-import { useLiveVotes } from '@/contexts/LiveVotesContext';
 
 const VotingPage = () => {
   const { gender } = useParams<{ gender: string }>();
   const navigate = useNavigate();
   const { lang, toggleLang, tr, isRtl } = useLanguage();
   const { theme, toggleTheme, isDark } = useTheme();
-  const { liveVotes, isLoading: liveLoading } = useLiveVotes();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [candidates, setCandidates] = useState<Candidate[]>(() => {
-    const validGender: Gender = gender === 'female' ? 'female' : 'male';
-    return getCandidatesSorted(validGender);
-  });
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const validGender: Gender = gender === 'female' ? 'female' : 'male';
   const BackArrow = isRtl ? ArrowRight : ArrowLeft;
 
-  // تحديث القائمة عند تحميل الأصوات الحية
-  useEffect(() => {
-    if (!liveLoading) {
-      const updated = getCandidatesWithLive(validGender, liveVotes);
-      setCandidates(updated);
-      setRefreshKey(k => k + 1);
+  const fetchCandidates = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getCandidatesLive(validGender);
+      setCandidates(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-  }, [liveVotes, liveLoading, validGender]);
+  }, [validGender]);
+
+  useEffect(() => {
+    fetchCandidates();
+  }, [fetchCandidates]);
+
+  const onVoteChange = useCallback(() => setRefreshKey(k => k + 1), []);
+  useEffect(() => {
+    if (refreshKey > 0) fetchCandidates();
+  }, [refreshKey, fetchCandidates]);
 
   return (
     <div className="min-h-screen marble-texture" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -65,29 +73,30 @@ const VotingPage = () => {
           <p className="text-sm text-muted-foreground">{tr('oneVoteWarning')}</p>
         </div>
 
-        <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
-          {candidates.map((c, i) => (
-            <CandidateCard
-              key={`${c.id}-${refreshKey}`}
-              candidate={c}
-              lang={lang}
-              rank={i}
-              votedLabel={tr('voted')}
-              votesLabel={tr('votes')}
-              onSelect={(id) => navigate(`/candidate/${id}`)}
-            />
-          ))}
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gold border-t-transparent" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4">
+            {candidates.map((c, i) => (
+              <CandidateCard
+                key={`${c.id}-${refreshKey}`}
+                candidate={c}
+                lang={lang}
+                rank={i}
+                votedLabel={tr('voted')}
+                votesLabel={tr('votes')}
+                onSelect={(id) => navigate(`/candidate/${id}`)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       <footer className="border-t border-gold/20 py-8">
         <div className="container text-center">
-          <a
-            href="https://www.facebook.com/groups/EGY.Model"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-muted-foreground font-display transition-colors hover:text-gold"
-          >
+          <a href="https://www.facebook.com/groups/EGY.Model" target="_blank" rel="noopener noreferrer" className="text-sm text-muted-foreground font-display transition-colors hover:text-gold">
             {tr('footer')}
           </a>
         </div>
