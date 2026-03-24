@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { Candidate, getVotes, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { Crown } from 'lucide-react';
+import { Crown, Loader2 } from 'lucide-react';
 
 interface Top5Props {
   title: string;
@@ -9,16 +9,18 @@ interface Top5Props {
   candidates: Candidate[];
   lang: Lang;
   votesLabel: string;
-  onSelect: (id: string, rank: number) => void; // تغيير: نمرر rank أيضاً
+  onSelect: (id: string, rank: number) => void;
 }
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [topCandidates, setTopCandidates] = useState<Candidate[]>(candidates);
   const [rankMap, setRankMap] = useState<Map<string, number>>(new Map());
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadLiveVotesAndSort() {
+      setLoading(true);
       try {
         const results = await Promise.all(
           candidates.map(async (c) => {
@@ -40,10 +42,26 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
         setTopCandidates(sorted.slice(0, 5));
       } catch (error) {
         console.error("Error loading live votes for Top5:", error);
+      } finally {
+        setLoading(false);
       }
     }
     loadLiveVotesAndSort();
   }, [candidates]);
+
+  if (loading) {
+    return (
+      <div className="mb-2">
+        <div className="mb-4 flex items-center gap-2">
+          <Crown className="h-5 w-5 text-gold" />
+          <h3 className="font-display text-lg font-semibold text-gold">{title} — {genderLabel}</h3>
+        </div>
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-gold" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-2">
