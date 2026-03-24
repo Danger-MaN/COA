@@ -87,7 +87,7 @@ function buildCandidates(): Candidate[] {
 
 export const candidates: Candidate[] = buildCandidates();
 
-/* ── Votes Mapping ── */
+/* ── Votes Mapping (Static) ── */
 const votesMap: Record<string, number> = (() => {
   const map: Record<string, number> = {};
   candidates.forEach(c => {
@@ -99,13 +99,25 @@ const votesMap: Record<string, number> = (() => {
   return map;
 })();
 
-/* ── Live Data Fetching ── */
+/* ── Live Votes Cache ── */
+let liveVotesCache: Record<string, number> = {};
+let lastFetchTime = 0;
+const CACHE_TTL = 30_000; // 30 seconds
 
-export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
+/* ── Live Data Fetching (with caching) ── */
+export async function fetchAllLiveVotes(forceRefresh = false): Promise<Record<string, number>> {
+  const now = Date.now();
+  if (!forceRefresh && liveVotesCache && (now - lastFetchTime) < CACHE_TTL) {
+    return liveVotesCache;
+  }
+
   try {
     const response = await fetch('/.netlify/functions/vote-api?action=getAll');
-    if (!response.ok) return {};
-    return await response.json();
+    if (!response.ok) throw new Error('Failed to fetch live votes');
+    const data = await response.json();
+    liveVotesCache = data;
+    lastFetchTime = now;
+    return liveVotesCache;
   } catch {
     return {};
   }
@@ -128,15 +140,31 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
       method: 'POST'
     });
     const data = await response.json();
+    // بعد التحديث، نُحدّث الكاش (إذا كان موجوداً) ونُعيد ضبط الوقت
+    if (liveVotesCache[candidateId] !== undefined) {
+      liveVotesCache[candidateId] = data.votes;
+    }
     return data.votes || 0;
   } catch {
     return 0;
   }
 }
 
-/* ── Exported Functions ── */
+/* ── Refresh all live votes (public API) ── */
+export async function refreshLiveVotes(): Promise<Record<string, number>> {
+  return await fetchAllLiveVotes(true);
+}
 
+/* ── Get total votes (static + live) for a candidate ── */
+export async function getTotalVotes(candidateId: string): Promise<number> {
+  const staticVotes = votesMap[candidateId] || 0;
+  const liveVotes = await fetchLiveVotes(candidateId);
+  return staticVotes + liveVotes;
+}
+
+/* ── Exported Functions (compatible with existing code) ── */
 export function getVotes(candidateId: string): number {
+  // للتوافق مع الكود القديم الذي يتوقع قيمة فورية (غير متزامنة)
   return votesMap[candidateId] || 0;
 }
 
@@ -150,26 +178,25 @@ export function getCandidateById(id: string | undefined): Candidate | undefined 
   return candidates.find(c => c.id === targetId || decodeURIComponent(c.id) === targetId);
 }
 
-// الدالة الأهم لربط الواجهة الرئيسية بالسيرفر والترتيب الصحيح
+/* ── Functions that combine static + live votes (async) ── */
 export async function getCandidatesLive(gender: Gender): Promise<Candidate[]> {
-  const liveVotesMap = await fetchAllLiveVotes();
+  const liveVotes = await fetchAllLiveVotes();
   
   return candidates
     .filter(c => c.gender === gender)
     .map(c => ({
       ...c,
-      votes: (votesMap[c.id] || 0) + (liveVotesMap[c.id] || 0)
+      votes: (votesMap[c.id] || 0) + (liveVotes[c.id] || 0)
     }))
     .sort((a, b) => (b.votes || 0) - (a.votes || 0));
 }
 
-// دالة التوب 5 المتوافقة مع السيرفر
 export async function getTop5Live(gender: Gender): Promise<Candidate[]> {
   const allSorted = await getCandidatesLive(gender);
   return allSorted.slice(0, 5);
 }
 
-/* ── Local Persistence (Logic unchanged) ── */
+/* ── Local Persistence (unchanged) ── */
 
 export function hasVoted(gender: Gender): boolean {
   try {
@@ -210,7 +237,7 @@ export function undoVote(gender: Gender): boolean {
   return true;
 }
 
-// دوال قديمة للتوافق (Legacy Support)
+// Legacy sync functions (for components that don't use live votes)
 export function getCandidatesSorted(gender: Gender): Candidate[] {
   return [...candidates]
     .filter(c => c.gender === gender)
