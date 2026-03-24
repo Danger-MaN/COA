@@ -3,7 +3,7 @@ import { Lang } from '@/lib/i18n';
 import { Heart, Check } from 'lucide-react';
 
 interface CandidateCardProps {
-  candidate: Candidate;   // يجب أن يحتوي candidate على votes محدثة
+  candidate: Candidate;
   lang: Lang;
   rank: number;
   votesLabel: string;
