@@ -12,7 +12,7 @@ export interface Candidate {
   instagram?: string;
 }
 
-/* ── Vite glob imports (build-time) ── */
+/* ── Vite glob imports ── */
 const mainImages = import.meta.glob<string>(
   '/src/assets/candidates/*/*/main.{jpg,jpeg,png,webp,avif,gif}',
   { eager: true, import: 'default' }
@@ -48,7 +48,7 @@ const instagramFiles = import.meta.glob<string>(
   { eager: true, query: '?raw', import: 'default' }
 );
 
-/* ── Parse path: /src/assets/candidates/{Gender}/{Name}/... ── */
+/* ── Functions ── */
 function parsePath(path: string): { gender: Gender; folderName: string } | null {
   const match = path.match(/\/src\/assets\/candidates\/(Male|Female)\/([^/]+)\//);
   if (!match) return null;
@@ -64,7 +64,6 @@ function readText(files: Record<string, string>, gender: string, name: string, f
 }
 
 function buildCandidates(): Candidate[] {
-  // Discover all candidates from mainImages keys
   const seen = new Set<string>();
   const results: Candidate[] = [];
 
@@ -76,63 +75,46 @@ function buildCandidates(): Candidate[] {
     seen.add(key);
 
     const genderFolder = info.gender === 'male' ? 'Male' : 'Female';
-    const name = info.folderName;
+    const folderName = info.folderName;
 
-    // Collect gallery images sorted by filename
-    const galleryPrefix = `/src/assets/candidates/${genderFolder}/${name}/gallery/`;
+    const galleryPrefix = `/src/assets/candidates/${genderFolder}/${folderName}/gallery/`;
     const gallery = Object.entries(galleryImages)
       .filter(([p]) => p.startsWith(galleryPrefix))
       .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
       .map(([, url]) => url);
 
     const mainImg = mainImages[path];
-    const allImages = [mainImg, ...gallery];
-
-    const fb = readText(facebookFiles, genderFolder, name, 'facebook.txt');
-    const tw = readText(twitterFiles, genderFolder, name, 'twitter.txt');
-    const ig = readText(instagramFiles, genderFolder, name, 'instagram.txt');
-
-
-    // ابحث عن هذا الجزء داخل دالة buildCandidates
-  results.push({
-    id: `${info.gender[0]}-${encodeURIComponent(name)}`,
-    // التعديل هنا: استبدال كل شرطة بمسافة عند العرض
-    name: name.replace(/-/g, ' '), 
-    bio: readText(bioFiles, genderFolder, name, 'bio.txt'),
-    gender: info.gender,
-    image: mainImg,
-    gallery: allImages,
-    facebook: fb || undefined,
-    twitter: tw || undefined,
-    instagram: ig || undefined,
-  });
-
+    
+    results.push({
+      id: `${info.gender[0]}-${encodeURIComponent(folderName)}`,
+      // تحويل الشرطة لمسافة عند العرض فقط
+      name: folderName.replace(/-/g, ' '), 
+      bio: readText(bioFiles, genderFolder, folderName, 'bio.txt'),
+      gender: info.gender,
+      image: mainImg,
+      gallery: [mainImg, ...gallery],
+      facebook: readText(facebookFiles, genderFolder, folderName, 'facebook.txt') || undefined,
+      twitter: readText(twitterFiles, genderFolder, folderName, 'twitter.txt') || undefined,
+      instagram: readText(instagramFiles, genderFolder, folderName, 'instagram.txt') || undefined,
+    });
+  }
   return results;
 }
 
+// تصحيح مكان التصدير ليكون خارج الدالة
 export const candidates: Candidate[] = buildCandidates();
 
-/* ── Votes (read from votes.txt at build time) ── */
-const VOTED_KEY = 'taj_voted';
-const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
-
-// تعديل مقترح لفك التشفير قبل البحث
-function getVotesFromFiles(): Record<string, number> {
+/* ── Votes ── */
+const votesMap = (() => {
   const result: Record<string, number> = {};
   for (const c of candidates) {
     const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
-    
-    // الحل هنا: فك التشفير ليعود %20 إلى مسافة عادية قبل البحث عن الفولدر
-    const folderName = decodeURIComponent(c.id.slice(2)); 
-    
-    const raw = readText(voteFiles, genderFolder, folderName, 'votes.txt');
+    const originalFolderName = decodeURIComponent(c.id.slice(2));
+    const raw = readText(voteFiles, genderFolder, originalFolderName, 'votes.txt');
     result[c.id] = parseInt(raw, 10) || 0;
   }
   return result;
-}
-
-
-const votesMap = getVotesFromFiles();
+})();
 
 export function getVotes(candidateId: string): number {
   return votesMap[candidateId] || 0;
@@ -143,31 +125,29 @@ export function getAllVotes(): Record<string, number> {
 }
 
 export function hasVoted(gender: Gender): boolean {
-  const voted = localStorage.getItem(VOTED_KEY);
+  const voted = localStorage.getItem('taj_voted');
   if (!voted) return false;
-  const map: Record<string, boolean> = JSON.parse(voted);
+  const map = JSON.parse(voted);
   return !!map[gender];
 }
 
 export function getVotedCandidateId(gender: Gender): string | null {
-  const stored = localStorage.getItem(VOTED_CANDIDATE_KEY);
+  const stored = localStorage.getItem('taj_voted_candidate');
   if (!stored) return null;
-  const map: Record<string, string> = JSON.parse(stored);
+  const map = JSON.parse(stored);
   return map[gender] || null;
 }
 
 export function castVote(candidateId: string, gender: Gender): boolean {
   if (hasVoted(gender)) return false;
-
-  const votedStr = localStorage.getItem(VOTED_KEY);
-  const votedMap: Record<string, boolean> = votedStr ? JSON.parse(votedStr) : {};
+  
+  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   votedMap[gender] = true;
-  localStorage.setItem(VOTED_KEY, JSON.stringify(votedMap));
+  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
 
-  const candidateStr = localStorage.getItem(VOTED_CANDIDATE_KEY);
-  const candidateMap: Record<string, string> = candidateStr ? JSON.parse(candidateStr) : {};
+  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   candidateMap[gender] = candidateId;
-  localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
+  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
 
   document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
   return true;
@@ -177,15 +157,13 @@ export function undoVote(gender: Gender): boolean {
   const candidateId = getVotedCandidateId(gender);
   if (!candidateId) return false;
 
-  const votedStr = localStorage.getItem(VOTED_KEY);
-  const votedMap: Record<string, boolean> = votedStr ? JSON.parse(votedStr) : {};
+  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
   delete votedMap[gender];
-  localStorage.setItem(VOTED_KEY, JSON.stringify(votedMap));
+  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
 
-  const candidateStr = localStorage.getItem(VOTED_CANDIDATE_KEY);
-  const candidateMap: Record<string, string> = candidateStr ? JSON.parse(candidateStr) : {};
+  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
   delete candidateMap[gender];
-  localStorage.setItem(VOTED_CANDIDATE_KEY, JSON.stringify(candidateMap));
+  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
 
   document.cookie = `voted_${gender}=; max-age=0; path=/`;
   return true;
