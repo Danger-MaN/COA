@@ -94,7 +94,12 @@ function buildCandidates(): Candidate[] {
 
     results.push({
       id: `${info.gender[0]}-${name}`,
-      name: name.replace(/([A-Z])/g, ' $1').trim(), // "YousefAlAthari" → "Yousef Al Athari"
+      
+      name: name.includes(' ') 
+      ? name.trim() // إذا كان هناك مسافة بالفعل، اترك الاسم كما هو
+      : name.replace(/([A-Z])/g, ' $1').trim(), // إذا كان ملتصقاً، أضف المسافات
+      
+      
       bio: readText(bioFiles, genderFolder, name, 'bio.txt'),
       gender: info.gender,
       image: mainImg,
