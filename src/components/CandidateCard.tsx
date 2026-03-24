@@ -1,5 +1,6 @@
-import { Candidate, hasVoted, getVotedCandidateId } from '@/lib/data';
+import { Candidate, getVotes, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
+import { useState, useEffect } from 'react';
 import { Heart, Check } from 'lucide-react';
 
 interface CandidateCardProps {
@@ -9,11 +10,43 @@ interface CandidateCardProps {
   votesLabel: string;
   votedLabel: string;
   onSelect: (id: string) => void;
+  onVoteChange?: () => void; // اختياري، للتحديث من الأب عند التصويت
 }
 
-export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect }: CandidateCardProps) {
+export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, onSelect, onVoteChange }: CandidateCardProps) {
+  const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const votedForThis = getVotedCandidateId(candidate.gender) === candidate.id;
   const name = candidate.name;
+
+  // جلب الأصوات الحية عند تحميل المكون
+  useEffect(() => {
+    async function loadLiveVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) {
+        console.error("Error loading live votes:", error);
+      }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
+
+  // إذا تم توفير onVoteChange، يمكن إعادة الجلب عند التصويت (اختياري)
+  useEffect(() => {
+    if (onVoteChange) {
+      // سنقوم بإعادة الجلب عند استدعاء onVoteChange من الأب
+      const handleVoteChange = () => {
+        async function refresh() {
+          const liveVotes = await fetchLiveVotes(candidate.id);
+          setVotes(getVotes(candidate.id) + liveVotes);
+        }
+        refresh();
+      };
+      // هذا مجرد فكرة، لكن من الأفضل أن يقوم الأب بإعادة جلب البيانات لجميع البطاقات
+      // بدلاً من جلب كل بطاقة على حدة عند كل تغيير.
+    }
+  }, [onVoteChange, candidate.id]);
 
   return (
     <div
@@ -46,7 +79,7 @@ export function CandidateCard({ candidate, lang, rank, votesLabel, votedLabel, o
       <div className="p-4">
         <h3 className="font-display text-base font-semibold truncate">{name}</h3>
         <div className="mt-1 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">{candidate.votes ?? 0} {votesLabel}</p>
+          <p className="text-sm text-muted-foreground">{votes} {votesLabel}</p>
           {votedForThis && (
             <span className="text-xs font-semibold text-gold">{votedLabel} ✓</span>
           )}
