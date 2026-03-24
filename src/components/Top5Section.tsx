@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { Candidate, getAllVotes } from '@/lib/data';
+import { Candidate } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { Crown } from 'lucide-react';
 
@@ -14,7 +14,6 @@ interface Top5Props {
 
 export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, onSelect }: Top5Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const votes = getAllVotes();
 
   return (
     <div className="mb-2">
@@ -37,7 +36,7 @@ export function Top5Section({ title, genderLabel, candidates, lang, votesLabel, 
             </div>
             <div className="p-3 text-start">
               <p className="text-sm font-semibold truncate">{c.name}</p>
-              <p className="text-xs text-muted-foreground">{votes[c.id] || 0} {votesLabel}</p>
+              <p className="text-xs text-muted-foreground">{c.votes ?? 0} {votesLabel}</p>
             </div>
           </button>
         ))}
