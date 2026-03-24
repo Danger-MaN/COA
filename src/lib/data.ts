@@ -114,16 +114,21 @@ export const candidates: Candidate[] = buildCandidates();
 const VOTED_KEY = 'taj_voted';
 const VOTED_CANDIDATE_KEY = 'taj_voted_candidate';
 
+// تعديل مقترح لفك التشفير قبل البحث
 function getVotesFromFiles(): Record<string, number> {
   const result: Record<string, number> = {};
   for (const c of candidates) {
     const genderFolder = c.gender === 'male' ? 'Male' : 'Female';
-    const folderName = decodeURIComponent(c.id.slice(2));
+    
+    // الحل هنا: فك التشفير ليعود %20 إلى مسافة عادية قبل البحث عن الفولدر
+    const folderName = decodeURIComponent(c.id.slice(2)); 
+    
     const raw = readText(voteFiles, genderFolder, folderName, 'votes.txt');
     result[c.id] = parseInt(raw, 10) || 0;
   }
   return result;
 }
+
 
 const votesMap = getVotesFromFiles();
 
