@@ -9,6 +9,7 @@ import GenderSelect from "./pages/GenderSelect.tsx";
 import VotingPage from "./pages/VotingPage.tsx";
 import CandidatePage from "./pages/CandidatePage.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import AdminPage from './pages/AdminPage';
 
 const queryClient = new QueryClient();
 
@@ -25,6 +26,7 @@ const App = () => (
             <Route path="/vote/:gender" element={<VotingPage />} />
             <Route path="/candidate/:id" element={<CandidatePage />} />
             <Route path="*" element={<NotFound />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </BrowserRouter>
       </VotesProvider>
