@@ -1,7 +1,7 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
 import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote, fetchLiveVotes } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 interface ProfileProps {
@@ -41,8 +41,42 @@ export function CandidateProfile({
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0); // seconds
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
+
+  // دالة لتحديث العداد
+  const updateCooldown = () => {
+    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
+    if (voteTime && votedForThis) {
+      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
+      const remaining = Math.max(0, 3600 - elapsed); // 3600 ثانية = ساعة
+      setCooldownRemaining(remaining);
+      if (remaining <= 0 && intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    } else {
+      setCooldownRemaining(0);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+  };
+
+  // إعداد العداد عند تحميل المكون أو عند تغيير حالة التصويت
+  useEffect(() => {
+    updateCooldown();
+    if (votedForThis && cooldownRemaining > 0 && !intervalRef.current) {
+      intervalRef.current = setInterval(updateCooldown, 1000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [votedForThis, candidate.gender]);
 
   // جلب الأصوات الحية عند تحميل المكون
   useEffect(() => {
@@ -67,6 +101,8 @@ export function CandidateProfile({
       const newLiveVotes = await updateLiveVote(candidate.id, 'vote');
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
+        // حفظ وقت التصويت
+        localStorage.setItem(`taj_vote_time_${candidate.gender}`, Date.now().toString());
         setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(true);
         setVotedForThis(true);
@@ -79,10 +115,27 @@ export function CandidateProfile({
   };
 
   const handleUndo = async () => {
+    // التحقق من وقت التصويت
+    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
+    if (voteTime) {
+      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
+      if (elapsed < 3600) {
+        const minutesLeft = Math.floor((3600 - elapsed) / 60);
+        const secondsLeft = Math.floor((3600 - elapsed) % 60);
+        const msg = lang === 'ar'
+          ? `لا يمكن التراجع إلا بعد ساعة. الوقت المتبقي: ${minutesLeft} دقيقة و ${secondsLeft} ثانية`
+          : `You can only undo after one hour. Time remaining: ${minutesLeft} min ${secondsLeft} sec`;
+        toast.error(msg);
+        return;
+      }
+    }
+    // إذا مرت ساعة أو لم يوجد وقت محفوظ
     try {
       const newLiveVotes = await updateLiveVote(candidate.id, 'undo');
       const success = undoVote(candidate.gender);
       if (success) {
+        // إزالة وقت التصويت من localStorage
+        localStorage.removeItem(`taj_vote_time_${candidate.gender}`);
         setVotes(getVotes(candidate.id) + newLiveVotes);
         setHasVotedGender(false);
         setVotedForThis(false);
@@ -99,6 +152,13 @@ export function CandidateProfile({
     { icon: Twitter, url: candidate.twitter, label: 'Twitter' },
     { icon: Instagram, url: candidate.instagram, label: 'Instagram' },
   ].filter(s => s.url);
+
+  // دالة لتنسيق العداد
+  const formatCooldown = () => {
+    const minutes = Math.floor(cooldownRemaining / 60);
+    const seconds = Math.floor(cooldownRemaining % 60);
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
 
   return (
     <div className="container max-w-5xl py-8 animate-fade-up">
@@ -156,10 +216,20 @@ export function CandidateProfile({
             {votedForThis ? (
               <button
                 onClick={handleUndo}
-                className="flex items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-8 py-3.5 font-display text-base font-semibold text-destructive transition-all duration-200 hover:bg-destructive/20 active:scale-[0.97]"
+                disabled={cooldownRemaining > 0}
+                className={`flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 font-display text-base font-semibold transition-all duration-200 active:scale-[0.97] ${
+                  cooldownRemaining > 0
+                    ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                    : 'border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20'
+                }`}
               >
                 <Undo2 className="h-5 w-5" />
                 {undoLabel}
+                {cooldownRemaining > 0 && (
+                  <span className="ml-2 text-xs font-mono bg-background/20 px-2 py-1 rounded-full">
+                    {formatCooldown()}
+                  </span>
+                )}
               </button>
             ) : (
               <button
