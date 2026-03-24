@@ -159,6 +159,32 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
 
+// أضف هذه الدالة في نهاية ملف data.ts
+export async function fetchLiveVotes(candidateId: string): Promise<number> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}`);
+    if (!response.ok) return 0;
+    const data = await response.json();
+    return data.votes || 0;
+  } catch {
+    return 0;
+  }
+}
+
+// دالة لإرسال الطلب (تصويت أو تراجع)
+export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<number> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
+      method: 'POST'
+    });
+    const data = await response.json();
+    return data.votes;
+  } catch {
+    return 0;
+  }
+}
+
+
 // هذه هي الدالة التي كانت مفقودة وتسببت في فشل الـ Build
 export function getTop5(gender: Gender): Candidate[] {
   return getCandidatesSorted(gender).slice(0, 10);
