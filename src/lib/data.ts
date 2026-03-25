@@ -140,6 +140,16 @@ export interface VoteResult {
   secondsLeft?: number;
 }
 
+// أضف هذه الدالة إلى data.ts
+export interface VoteResult {
+  success: boolean;
+  votes?: number;
+  error?: string;
+  minutesLeft?: number;
+  secondsLeft?: number;
+  country?: string;
+}
+
 export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<VoteResult> {
   try {
     const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
@@ -152,7 +162,8 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
         success: false, 
         error: data.error,
         minutesLeft: data.minutesLeft,
-        secondsLeft: data.secondsLeft
+        secondsLeft: data.secondsLeft,
+        country: data.country
       };
     }
     
@@ -162,8 +173,13 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
   }
 }
 
-// دالة مساعدة للحصول على الرسائل المناسبة
-export function getVoteErrorMessage(error: string, lang: 'ar' | 'en', minutesLeft?: number, secondsLeft?: number): string {
+// تحديث دالة getVoteErrorMessage
+export function getVoteErrorMessage(error: string, lang: 'ar' | 'en', minutesLeft?: number, secondsLeft?: number, country?: string): string {
+  if (error === 'country_not_allowed') {
+    return lang === 'ar' 
+      ? 'التصويت مقتصر على دول الشرق الأوسط فقط. إذا كنت في الشرق الأوسط، تأكد من عدم استخدام VPN.'
+      : 'Voting is restricted to Middle Eastern countries only. If you are in the Middle East, please make sure you are not using a VPN.';
+  }
   if (error === 'ip_voted') {
     return lang === 'ar' 
       ? 'لا يمكنك التصويت أكثر من مرة من هذا الجهاز/الشبكة'
