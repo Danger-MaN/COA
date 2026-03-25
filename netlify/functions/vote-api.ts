@@ -1,13 +1,80 @@
 import { getStore } from "@netlify/blobs";
 
-// دالة لتوليد مفتاح الجلسة بناءً على IP + نوع التصويت
-function getIpKey(req: Request, gender: string): string {
-  const ip = req.headers.get('x-forwarded-for') || 
+// دالة متقدمة لاستخراج IP الحقيقي مع تجاهل البروكسيات
+function getRealIp(req: Request): string {
+  // قائمة بالرؤوس التي قد تحتوي على IP الحقيقي (مرتبة حسب الأولوية)
+  const headers = [
+    'x-forwarded-for',      // الأكثر شيوعاً من البروكسيات
+    'x-real-ip',            // من Nginx و Apache
+    'cf-connecting-ip',     // من Cloudflare
+    'fastly-client-ip',     // من Fastly
+    'x-original-forwarded-for', // من بعض البروكسيات
+    'true-client-ip',       // من Akamai
+    'x-cluster-client-ip',  // من بعض موازنات الحمل
+    'forwarded',            // معيار RFC 7239
+    'x-appengine-user-ip',  // من Google App Engine
+    'x-azure-clientip',     // من Azure
+    'x-vercel-forwarded-for', // من Vercel
+    'x-heroku-forwarded-for'  // من Heroku
+  ];
+  
+  for (const header of headers) {
+    const value = req.headers.get(header);
+    if (value && value.trim() !== '') {
+      // إذا كان الرأس يحتوي على عدة IPs (مثل x-forwarded-for: client, proxy1, proxy2)
+      // نأخذ أول IP (هو IP العميل الحقيقي)
+      const ips = value.split(',').map(ip => ip.trim());
+      // نبحث عن أول IP غير خاص (private) أو غير معروف
+      for (const ip of ips) {
+        // نتجاهل IPs الخاصة (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x, etc.)
+        if (!isPrivateIp(ip) && ip !== 'unknown') {
+          return ip;
+        }
+      }
+      // إذا لم نجد IP عام، نأخذ أول IP
+      return ips[0];
+    }
+  }
+  
+  // الرجوع إلى IP من socket
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
              req.headers.get('x-real-ip') || 
              'unknown';
-  // نأخذ أول IP إذا كان هناك عدة IPs (مثل x-forwarded-for: client, proxy1, proxy2)
-  const firstIp = ip.split(',')[0].trim();
-  return `ip:${firstIp}:${gender}`;
+  return ip;
+}
+
+// دالة للتحقق مما إذا كان IP خاص (private) أم لا
+function isPrivateIp(ip: string): boolean {
+  // تجاهل IPv6 loopback و localhost
+  if (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') {
+    return true;
+  }
+  
+  // التحقق من IPv4 ranges الخاصة
+  const parts = ip.split('.');
+  if (parts.length === 4) {
+    const first = parseInt(parts[0], 10);
+    const second = parseInt(parts[1], 10);
+    
+    // 10.0.0.0/8
+    if (first === 10) return true;
+    // 172.16.0.0/12
+    if (first === 172 && second >= 16 && second <= 31) return true;
+    // 192.168.0.0/16
+    if (first === 192 && second === 168) return true;
+    // 127.0.0.0/8
+    if (first === 127) return true;
+    // 169.254.0.0/16 (APIPA)
+    if (first === 169 && second === 254) return true;
+  }
+  
+  return false;
+}
+
+// دالة لتوليد مفتاح الجلسة بناءً على IP + نوع التصويت
+function getIpKey(req: Request, gender: string): string {
+  const realIp = getRealIp(req);
+  return `ip:${realIp}:${gender}`;
 }
 
 export default async (req: Request) => {
@@ -22,6 +89,7 @@ export default async (req: Request) => {
   // استخراج الجنس من المعرف (m- أو f-)
   const gender = candidateId.startsWith('m-') ? 'male' : 'female';
   const ipKey = getIpKey(req, gender);
+  const realIp = getRealIp(req);
 
   const store = getStore("candidate-votes");
   const ipStore = getStore("voter-ips"); // لتخزين عناوين IP التي صوّتت
@@ -47,7 +115,8 @@ export default async (req: Request) => {
         return new Response(
           JSON.stringify({ 
             error: "ip_voted", 
-            message: "You have already voted from this device/network" 
+            message: "You have already voted from this device/network",
+            ip: realIp // للتصحيح (يمكن إزالته في الإنتاج)
           }),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
@@ -59,7 +128,8 @@ export default async (req: Request) => {
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
         candidateId,
-        gender
+        gender,
+        ip: realIp // تخزين IP للتتبع
       }), { ttl: 3600 }); // تنتهي تلقائياً بعد ساعة
       
     } else if (action === "undo") {
