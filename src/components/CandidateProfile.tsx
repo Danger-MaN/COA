@@ -1,5 +1,5 @@
 import { ArrowRight, ArrowLeft, Heart, Undo2, Facebook, Twitter, Instagram } from 'lucide-react';
-import { Candidate, getVotes, hasVoted, castVote, undoVote, getVotedCandidateId, updateLiveVote, fetchLiveVotes, candidates as allCandidates } from '@/lib/data';
+import { Candidate, getVotes, fetchLiveVotes, castLiveVote, undoLiveVote, getCandidatesLive, candidates as allCandidates } from '@/lib/data';
 import { Lang } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 interface ProfileProps {
   candidate: Candidate;
   lang: Lang;
-  rank: number; // المركز من الصفحة الأب (إذا كان -1 يعني غير محسوب)
+  rank: number;
   onBack: () => void;
   voteLabel: string;
   votedLabel: string;
@@ -39,44 +39,43 @@ export function CandidateProfile({
 }: ProfileProps) {
   const [selectedImg, setSelectedImg] = useState(0);
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
-  const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
-  const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
+  const [hasVotedGender, setHasVotedGender] = useState(false);
+  const [votedForThis, setVotedForThis] = useState(false);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
-  const [localRank, setLocalRank] = useState<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [voteTime, setVoteTime] = useState<number | null>(null);
 
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // إذا لم يتم تمرير rank صحيح، نحسب المركز بأنفسنا
+  // جلب حالة التصويت من الخادم عند تحميل المكون
   useEffect(() => {
-    if (rank >= 0) return; // rank موجود، لا حاجة للحساب
-
-    async function calculateRank() {
+    async function loadVoteStatus() {
       try {
-        const sameGender = allCandidates.filter(c => c.gender === candidate.gender);
-        const withVotes = await Promise.all(
-          sameGender.map(async (c) => {
-            const liveVotes = await fetchLiveVotes(c.id);
-            const staticVotes = getVotes(c.id);
-            return { id: c.id, votes: staticVotes + liveVotes };
-          })
-        );
-        const sorted = withVotes.sort((a, b) => b.votes - a.votes);
-        const index = sorted.findIndex(item => item.id === candidate.id);
-        setLocalRank(index);
+        const response = await fetch(`/.netlify/functions/vote-api?action=status&gender=${candidate.gender}`, {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.voted) {
+            setHasVotedGender(true);
+            setVotedForThis(data.candidateId === candidate.id);
+            if (data.voteTime) {
+              setVoteTime(data.voteTime);
+            }
+          }
+        }
       } catch (err) {
-        console.error('Error calculating rank:', err);
+        console.error('Error loading vote status:', err);
       }
     }
-    calculateRank();
-  }, [rank, candidate.id, candidate.gender]);
+    loadVoteStatus();
+  }, [candidate.id, candidate.gender]);
 
   // دالة لتحديث الوقت المتبقي
   const updateCooldown = () => {
-    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
     if (voteTime && votedForThis) {
-      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
+      const elapsed = (Date.now() - voteTime) / 1000;
       const remaining = Math.max(0, 3600 - elapsed);
       setCooldownRemaining(remaining);
       if (remaining <= 0 && intervalRef.current) {
@@ -104,7 +103,7 @@ export function CandidateProfile({
         intervalRef.current = null;
       }
     };
-  }, [votedForThis, candidate.gender, cooldownRemaining]);
+  }, [votedForThis, voteTime, cooldownRemaining]);
 
   // جلب الأصوات الحية عند تحميل المكون
   useEffect(() => {
@@ -125,50 +124,61 @@ export function CandidateProfile({
       toast.error(alreadyVotedMsg);
       return;
     }
-    try {
-      const newLiveVotes = await updateLiveVote(candidate.id, 'vote');
-      const success = castVote(candidate.id, candidate.gender);
-      if (success) {
-        localStorage.setItem(`taj_vote_time_${candidate.gender}`, Date.now().toString());
-        setVotes(getVotes(candidate.id) + newLiveVotes);
-        setHasVotedGender(true);
-        setVotedForThis(true);
-        onVoteChange();
-        toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
+    
+    const result = await castLiveVote(candidate.id);
+    
+    if (!result.success) {
+      if (result.error === 'already_voted') {
+        toast.error(alreadyVotedMsg);
+      } else if (result.error === 'session_mismatch') {
+        toast.error(lang === 'ar' ? 'جلسة غير صالحة، يرجى تحديث الصفحة' : 'Invalid session, please refresh');
+      } else {
+        toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
       }
-    } catch (e) {
-      toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
+      return;
     }
+    
+    setVotes(getVotes(candidate.id) + (result.votes || 0));
+    setHasVotedGender(true);
+    setVotedForThis(true);
+    setVoteTime(Date.now());
+    onVoteChange();
+    toast.success(lang === 'ar' ? `تم التصويت لـ ${name}` : `Voted for ${name}`);
   };
 
   const handleUndo = async () => {
-    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
-    if (voteTime) {
-      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
-      if (elapsed < 3600) {
-        const minutesLeft = Math.floor((3600 - elapsed) / 60);
-        const secondsLeft = Math.floor((3600 - elapsed) % 60);
+    if (cooldownRemaining > 0) {
+      const minutesLeft = Math.floor(cooldownRemaining / 60);
+      const secondsLeft = Math.floor(cooldownRemaining % 60);
+      const msg = lang === 'ar'
+        ? `لا يمكن التراجع إلا بعد ساعة. الوقت المتبقي: ${minutesLeft} دقيقة و ${secondsLeft} ثانية`
+        : `You can only undo after one hour. Time remaining: ${minutesLeft} min ${secondsLeft} sec`;
+      toast.error(msg);
+      return;
+    }
+    
+    const result = await undoLiveVote(candidate.id);
+    
+    if (!result.success) {
+      if (result.error === 'cooldown') {
         const msg = lang === 'ar'
-          ? `لا يمكن التراجع إلا بعد ساعة. الوقت المتبقي: ${minutesLeft} دقيقة و ${secondsLeft} ثانية`
-          : `You can only undo after one hour. Time remaining: ${minutesLeft} min ${secondsLeft} sec`;
+          ? `لا يمكن التراجع إلا بعد ساعة. الوقت المتبقي: ${result.minutesLeft} دقيقة و ${result.secondsLeft} ثانية`
+          : `You can only undo after one hour. Time remaining: ${result.minutesLeft} min ${result.secondsLeft} sec`;
         toast.error(msg);
-        return;
+      } else if (result.error === 'no_vote_to_undo') {
+        toast.error(lang === 'ar' ? 'لا يوجد تصويت للإلغاء' : 'No vote to undo');
+      } else {
+        toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
       }
+      return;
     }
-    try {
-      const newLiveVotes = await updateLiveVote(candidate.id, 'undo');
-      const success = undoVote(candidate.gender);
-      if (success) {
-        localStorage.removeItem(`taj_vote_time_${candidate.gender}`);
-        setVotes(getVotes(candidate.id) + newLiveVotes);
-        setHasVotedGender(false);
-        setVotedForThis(false);
-        onVoteChange();
-        toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
-      }
-    } catch (e) {
-      toast.error(lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error');
-    }
+    
+    setVotes(getVotes(candidate.id) + (result.votes || 0));
+    setHasVotedGender(false);
+    setVotedForThis(false);
+    setVoteTime(null);
+    onVoteChange();
+    toast.success(lang === 'ar' ? 'تم إلغاء التصويت' : 'Vote cancelled');
   };
 
   const socials = [
@@ -182,8 +192,6 @@ export function CandidateProfile({
     const seconds = Math.floor(cooldownRemaining % 60);
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
-
-  const displayRank = rank >= 0 ? rank : (localRank ?? 0);
 
   return (
     <div className="container max-w-5xl py-8 animate-fade-up">
