@@ -1,77 +1,70 @@
 import { getStore } from "@netlify/blobs";
 
-// دالة متقدمة لاستخراج IP الحقيقي مع تجاهل البروكسيات
+// دالة لاستخراج IP الحقيقي
 function getRealIp(req: Request): string {
-  // قائمة بالرؤوس التي قد تحتوي على IP الحقيقي (مرتبة حسب الأولوية)
   const headers = [
-    'x-forwarded-for',      // الأكثر شيوعاً من البروكسيات
-    'x-real-ip',            // من Nginx و Apache
-    'cf-connecting-ip',     // من Cloudflare
-    'fastly-client-ip',     // من Fastly
-    'x-original-forwarded-for', // من بعض البروكسيات
-    'true-client-ip',       // من Akamai
-    'x-cluster-client-ip',  // من بعض موازنات الحمل
-    'forwarded',            // معيار RFC 7239
-    'x-appengine-user-ip',  // من Google App Engine
-    'x-azure-clientip',     // من Azure
-    'x-vercel-forwarded-for', // من Vercel
-    'x-heroku-forwarded-for'  // من Heroku
+    'x-forwarded-for',
+    'x-real-ip',
+    'cf-connecting-ip',
+    'fastly-client-ip',
+    'x-original-forwarded-for',
+    'true-client-ip'
   ];
   
   for (const header of headers) {
     const value = req.headers.get(header);
     if (value && value.trim() !== '') {
-      // إذا كان الرأس يحتوي على عدة IPs (مثل x-forwarded-for: client, proxy1, proxy2)
-      // نأخذ أول IP (هو IP العميل الحقيقي)
       const ips = value.split(',').map(ip => ip.trim());
-      // نبحث عن أول IP غير خاص (private) أو غير معروف
       for (const ip of ips) {
-        // نتجاهل IPs الخاصة (localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x, etc.)
         if (!isPrivateIp(ip) && ip !== 'unknown') {
           return ip;
         }
       }
-      // إذا لم نجد IP عام، نأخذ أول IP
       return ips[0];
     }
   }
-  
-  // الرجوع إلى IP من socket
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
-             req.headers.get('x-real-ip') || 
-             'unknown';
-  return ip;
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 }
 
-// دالة للتحقق مما إذا كان IP خاص (private) أم لا
 function isPrivateIp(ip: string): boolean {
-  // تجاهل IPv6 loopback و localhost
-  if (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') {
-    return true;
-  }
-  
-  // التحقق من IPv4 ranges الخاصة
+  if (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') return true;
   const parts = ip.split('.');
   if (parts.length === 4) {
     const first = parseInt(parts[0], 10);
     const second = parseInt(parts[1], 10);
-    
-    // 10.0.0.0/8
     if (first === 10) return true;
-    // 172.16.0.0/12
     if (first === 172 && second >= 16 && second <= 31) return true;
-    // 192.168.0.0/16
     if (first === 192 && second === 168) return true;
-    // 127.0.0.0/8
     if (first === 127) return true;
-    // 169.254.0.0/16 (APIPA)
     if (first === 169 && second === 254) return true;
   }
-  
   return false;
 }
 
-// دالة لتوليد مفتاح الجلسة بناءً على IP + نوع التصويت
+// التحقق من أن IP ليس بروكسي أو VPN باستخدام IPinfo
+async function isProxyOrVpn(ip: string): Promise<boolean> {
+  try {
+    // يمكنك استخدام IPinfo.io أو ipapi.co
+    const response = await fetch(`https://ipinfo.io/${ip}/json`, {
+      headers: {
+        // إذا كان لديك مفتاح API، أضفه هنا
+        // 'Authorization': 'Bearer your_token'
+      }
+    });
+    const data = await response.json();
+    
+    // التحقق من وجود بروكسي أو VPN (حسب البيانات التي يعيدها IPinfo)
+    return data.privacy?.vpn === true || 
+           data.privacy?.proxy === true || 
+           data.privacy?.tor === true ||
+           data.hosting === true;
+  } catch (error) {
+    console.error('Error checking proxy:', error);
+    return false; // في حالة الخطأ، نسمح بالتصويت (أو يمكنك رفضه)
+  }
+}
+
+// دالة لتوليد مفتاح IP
 function getIpKey(req: Request, gender: string): string {
   const realIp = getRealIp(req);
   return `ip:${realIp}:${gender}`;
@@ -80,23 +73,26 @@ function getIpKey(req: Request, gender: string): string {
 export default async (req: Request) => {
   const url = new URL(req.url);
   const candidateId = url.searchParams.get("id");
-  const action = url.searchParams.get("action"); // 'vote', 'undo', أو 'set'
+  const action = url.searchParams.get("action");
 
   if (!candidateId) {
     return new Response("Missing ID", { status: 400 });
   }
 
-  // استخراج الجنس من المعرف (m- أو f-)
   const gender = candidateId.startsWith('m-') ? 'male' : 'female';
   const ipKey = getIpKey(req, gender);
   const realIp = getRealIp(req);
 
-  const store = getStore("candidate-votes");
-  const ipStore = getStore("voter-ips"); // لتخزين عناوين IP التي صوّتت
+  // التحقق من أن IP ليس بروكسي (اختياري - يمكن تفعيله)
+  // const isProxy = await isProxyOrVpn(realIp);
+  // if (isProxy && action === 'vote') {
+  //   return new Response(JSON.stringify({ error: "proxy_detected", message: "VPN/Proxy not allowed" }), { status: 403 });
+  // }
 
+  const store = getStore("candidate-votes");
+  const ipStore = getStore("voter-ips");
   let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
 
-  // GET: جلب الأصوات الحالية
   if (req.method === "GET") {
     return new Response(
       JSON.stringify({ votes: currentVotes }),
@@ -104,36 +100,26 @@ export default async (req: Request) => {
     );
   }
 
-  // POST: تحديث الأصوات
   if (req.method === "POST") {
     let newVotes = currentVotes as number;
 
     if (action === "vote") {
-      // التحقق: هل هذا IP صوّت بالفعل لهذا الجنس؟
       const ipVoted = await ipStore.get(ipKey);
       if (ipVoted) {
         return new Response(
-          JSON.stringify({ 
-            error: "ip_voted", 
-            message: "You have already voted from this device/network",
-            ip: realIp // للتصحيح (يمكن إزالته في الإنتاج)
-          }),
+          JSON.stringify({ error: "ip_voted" }),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
       }
       
       newVotes += 1;
-      
-      // تسجيل IP مع وقت التصويت (تنتهي تلقائياً بعد ساعة)
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
         candidateId,
-        gender,
-        ip: realIp // تخزين IP للتتبع
-      }), { ttl: 3600 }); // تنتهي تلقائياً بعد ساعة
+        gender
+      }), { ttl: 3600 });
       
     } else if (action === "undo") {
-      // التحقق: هل هذا IP صوّت لنفس المرشح؟
       const ipRecord = await ipStore.get(ipKey);
       if (!ipRecord) {
         return new Response(
@@ -150,48 +136,30 @@ export default async (req: Request) => {
         );
       }
       
-      // التحقق من مرور ساعة
       const elapsed = (Date.now() - record.timestamp) / 1000;
       if (elapsed < 3600) {
         const minutesLeft = Math.floor((3600 - elapsed) / 60);
         const secondsLeft = Math.floor((3600 - elapsed) % 60);
         return new Response(
-          JSON.stringify({ 
-            error: "cooldown", 
-            minutesLeft, 
-            secondsLeft,
-            message: `Please wait ${minutesLeft} minutes and ${secondsLeft} seconds before undoing`
-          }),
+          JSON.stringify({ error: "cooldown", minutesLeft, secondsLeft }),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
       }
       
       newVotes = Math.max(0, newVotes - 1);
-      
-      // حذف سجل IP
       await ipStore.delete(ipKey);
       
     } else if (action === "set") {
-      // إجراء خاص بالأدمن
       const { value, password } = await req.json();
       if (password !== "Danger-MaN") {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
       }
       if (typeof value !== "number" || isNaN(value)) {
-        return new Response(
-          JSON.stringify({ error: "Invalid value" }),
-          { status: 400, headers: { "Content-Type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ error: "Invalid value" }), { status: 400 });
       }
       newVotes = value;
     } else {
-      return new Response(
-        JSON.stringify({ error: "Invalid action" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
     }
 
     await store.set(candidateId, JSON.stringify(newVotes));
