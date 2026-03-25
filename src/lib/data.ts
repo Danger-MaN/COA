@@ -225,6 +225,61 @@ export function getCandidatesSorted(gender: Gender): Candidate[] {
     .filter(c => c.gender === gender)
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
+// واجهات جديدة للرد من السيرفر
+export interface VoteResponse {
+  success: boolean;
+  votes?: number;
+  error?: string;
+  minutesLeft?: number;
+  secondsLeft?: number;
+}
+
+// دالة التصويت المعدلة
+export async function castLiveVote(candidateId: string): Promise<VoteResponse> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=vote`, {
+      method: 'POST',
+      credentials: 'include' // مهم لإرسال الكوكيز
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
+    }
+    return { success: true, votes: data.votes };
+  } catch {
+    return { success: false, error: 'network_error' };
+  }
+}
+
+// دالة التراجع المعدلة
+export async function undoLiveVote(candidateId: string): Promise<VoteResponse> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=undo`, {
+      method: 'POST',
+      credentials: 'include'
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
+    }
+    return { success: true, votes: data.votes };
+  } catch {
+    return { success: false, error: 'network_error' };
+  }
+}
+
+// دالة للتحقق من حالة التصويت من الخادم (اختياري)
+export async function checkVoteStatus(gender: Gender): Promise<{ voted: boolean; candidateId?: string; remainingCooldown?: number }> {
+  try {
+    const response = await fetch(`/.netlify/functions/vote-api?action=status&gender=${gender}`, {
+      credentials: 'include'
+    });
+    return await response.json();
+  } catch {
+    return { voted: false };
+  }
+}
+
 
 export function getTop5(gender: Gender): Candidate[] {
   return getCandidatesSorted(gender).slice(0, 10);
