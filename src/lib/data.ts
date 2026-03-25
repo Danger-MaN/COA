@@ -7,10 +7,19 @@ export interface Candidate {
   gender: Gender;
   image: string;
   gallery: string[];
-  votes?: number; // مجموع الأصوات (ثابت + حي)
+  votes?: number;
   facebook?: string;
   twitter?: string;
   instagram?: string;
+}
+
+export interface VoteResult {
+  success: boolean;
+  votes?: number;
+  error?: string;
+  message?: string;
+  minutesLeft?: number;
+  secondsLeft?: number;
 }
 
 /* ── Vite glob imports ── */
@@ -99,13 +108,13 @@ const votesMap: Record<string, number> = (() => {
   return map;
 })();
 
-/* ── Live Data Fetching (Single Implementation) ── */
+/* ── Live Data Fetching ── */
 
 export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch('/.netlify/functions/vote-api?action=getAll', {
+    const response = await fetch('/.netlify/functions/vote-api', {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -114,7 +123,6 @@ export async function fetchAllLiveVotes(): Promise<Record<string, number>> {
       return {};
     }
     const data = await response.json();
-    console.log('Live votes loaded:', data);
     return data;
   } catch (err) {
     console.error('Error in fetchAllLiveVotes:', err);
@@ -133,19 +141,30 @@ export async function fetchLiveVotes(candidateId: string): Promise<number> {
   }
 }
 
-export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<number> {
+export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<VoteResult> {
   try {
     const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
       method: 'POST'
     });
     const data = await response.json();
-    return data.votes || 0;
+    
+    if (!response.ok) {
+      return { 
+        success: false, 
+        error: data.error,
+        message: data.message,
+        minutesLeft: data.minutesLeft,
+        secondsLeft: data.secondsLeft
+      };
+    }
+    
+    return { success: true, votes: data.votes };
   } catch {
-    return 0;
+    return { success: false, error: 'network_error', message: 'Network error' };
   }
 }
 
-/* ── Exported Functions (Synchronous) ── */
+/* ── Exported Functions ── */
 export function getVotes(candidateId: string): number {
   return votesMap[candidateId] || 0;
 }
@@ -178,108 +197,30 @@ export async function getTop5Live(gender: Gender): Promise<Candidate[]> {
   return allSorted.slice(0, 5);
 }
 
-/* ── Local Persistence (unchanged) ── */
-
+// Removed local persistence functions - now handled by server
+// The following functions are kept for compatibility but are deprecated
 export function hasVoted(gender: Gender): boolean {
-  try {
-    const voted = localStorage.getItem('taj_voted');
-    return voted ? !!JSON.parse(voted)[gender] : false;
-  } catch { return false; }
+  return false; // Now handled by server
 }
 
 export function getVotedCandidateId(gender: Gender): string | null {
-  try {
-    const stored = localStorage.getItem('taj_voted_candidate');
-    return stored ? JSON.parse(stored)[gender] || null : null;
-  } catch { return null; }
+  return null; // Now handled by server
 }
 
 export function castVote(candidateId: string, gender: Gender): boolean {
-  if (hasVoted(gender)) return false;
-  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
-  votedMap[gender] = true;
-  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
-  candidateMap[gender] = candidateId;
-  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-  document.cookie = `voted_${gender}=true; max-age=${60 * 60 * 24 * 365}; path=/`;
-  return true;
+  return true; // Now handled by server
 }
 
 export function undoVote(gender: Gender): boolean {
-  const id = getVotedCandidateId(gender);
-  if (!id) return false;
-  const votedMap = JSON.parse(localStorage.getItem('taj_voted') || '{}');
-  delete votedMap[gender];
-  localStorage.setItem('taj_voted', JSON.stringify(votedMap));
-  const candidateMap = JSON.parse(localStorage.getItem('taj_voted_candidate') || '{}');
-  delete candidateMap[gender];
-  localStorage.setItem('taj_voted_candidate', JSON.stringify(candidateMap));
-  document.cookie = `voted_${gender}=; max-age=0; path=/`;
-  return true;
+  return true; // Now handled by server
 }
 
-// Legacy sync functions (optional)
+// Legacy sync functions (deprecated)
 export function getCandidatesSorted(gender: Gender): Candidate[] {
   return [...candidates]
     .filter(c => c.gender === gender)
     .sort((a, b) => (votesMap[b.id] || 0) - (votesMap[a.id] || 0));
 }
-// واجهات جديدة للرد من السيرفر
-export interface VoteResponse {
-  success: boolean;
-  votes?: number;
-  error?: string;
-  minutesLeft?: number;
-  secondsLeft?: number;
-}
-
-// دالة التصويت المعدلة
-export async function castLiveVote(candidateId: string): Promise<VoteResponse> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=vote`, {
-      method: 'POST',
-      credentials: 'include' // مهم لإرسال الكوكيز
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
-    }
-    return { success: true, votes: data.votes };
-  } catch {
-    return { success: false, error: 'network_error' };
-  }
-}
-
-// دالة التراجع المعدلة
-export async function undoLiveVote(candidateId: string): Promise<VoteResponse> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=undo`, {
-      method: 'POST',
-      credentials: 'include'
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
-    }
-    return { success: true, votes: data.votes };
-  } catch {
-    return { success: false, error: 'network_error' };
-  }
-}
-
-// دالة للتحقق من حالة التصويت من الخادم (اختياري)
-export async function checkVoteStatus(gender: Gender): Promise<{ voted: boolean; candidateId?: string; remainingCooldown?: number }> {
-  try {
-    const response = await fetch(`/.netlify/functions/vote-api?action=status&gender=${gender}`, {
-      credentials: 'include'
-    });
-    return await response.json();
-  } catch {
-    return { voted: false };
-  }
-}
-
 
 export function getTop5(gender: Gender): Candidate[] {
   return getCandidatesSorted(gender).slice(0, 10);
