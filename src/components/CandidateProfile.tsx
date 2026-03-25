@@ -128,11 +128,11 @@ export function CandidateProfile({
     try {
       const result = await updateLiveVote(candidate.id, 'vote');
       if (!result.success) {
-        const errorMsg = getVoteErrorMessage(result.error!, lang);
+        const errorMsg = getVoteErrorMessage(result.error!, lang, result.minutesLeft, result.secondsLeft, result.country);
         toast.error(errorMsg);
         return;
-      }
-      
+     }
+    
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
         localStorage.setItem(`taj_vote_time_${candidate.gender}`, Date.now().toString());
