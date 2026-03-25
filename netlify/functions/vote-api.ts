@@ -19,11 +19,7 @@ export default async (req: Request) => {
   const url = new URL(req.url);
   const candidateId = url.searchParams.get("id");
   const action = url.searchParams.get("action");
-
-  // التحقق من وجود candidateId
-  if (req.method === "POST" && !candidateId) {
-    return new Response("Missing ID", { status: 400 });
-  }
+  const gender = url.searchParams.get("gender");
 
   const votesStore = getStore("candidate-votes");
   const sessionsStore = getStore("sessions");
@@ -84,21 +80,39 @@ export default async (req: Request) => {
     return new Response(JSON.stringify(data), { status, headers });
   }
   
-  // GET: جلب الأصوات
+  // GET: جلب الأصوات أو التحقق من حالة التصويت
   if (req.method === "GET") {
+    // التحقق من حالة التصويت لجنس معين
+    if (action === "status" && gender) {
+      if (gender !== "male" && gender !== "female") {
+        return createResponse({ error: "Invalid gender" }, 400);
+      }
+      const voteKey = `${gender}:${sessionId}`;
+      const userVote = sessionData.votes?.[voteKey] || null;
+      if (userVote) {
+        return createResponse({
+          voted: true,
+          candidateId: userVote.candidateId,
+          voteTime: userVote.timestamp
+        }, 200, false);
+      }
+      return createResponse({ voted: false }, 200, false);
+    }
+    
+    // جلب أصوات مرشح محدد
     if (candidateId) {
       const votes = await votesStore.get(candidateId, { type: "json" }) || 0;
       return createResponse({ votes }, 200, false);
-    } else {
-      // جلب جميع الأصوات
-      const allKeys = await votesStore.list();
-      const votesMap: Record<string, number> = {};
-      for (const key of allKeys) {
-        const val = await votesStore.get(key, { type: "json" }) || 0;
-        votesMap[key] = val;
-      }
-      return createResponse(votesMap, 200, false);
+    } 
+    
+    // جلب جميع الأصوات
+    const allKeys = await votesStore.list();
+    const votesMap: Record<string, number> = {};
+    for (const key of allKeys) {
+      const val = await votesStore.get(key, { type: "json" }) || 0;
+      votesMap[key] = val;
     }
+    return createResponse(votesMap, 200, false);
   }
   
   // POST: تحديث الأصوات (تصويت أو تراجع)
@@ -107,8 +121,8 @@ export default async (req: Request) => {
       return createResponse({ error: "Missing id or action" }, 400);
     }
     
-    const gender = candidateId.startsWith('m-') ? 'male' : 'female';
-    const voteKey = `${gender}:${sessionId}`;
+    const userGender = candidateId.startsWith('m-') ? 'male' : 'female';
+    const voteKey = `${userGender}:${sessionId}`;
     
     // جلب حالة التصويت لهذه الجلسة
     let userVote = sessionData.votes?.[voteKey] || null;
