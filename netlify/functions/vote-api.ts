@@ -1,116 +1,122 @@
 import { getStore } from "@netlify/blobs";
 
+// دالة لتوليد مفتاح الجلسة بناءً على IP + نوع التصويت
+function getIpKey(req: Request, gender: string): string {
+  const ip = req.headers.get('x-forwarded-for') || 
+             req.headers.get('x-real-ip') || 
+             'unknown';
+  return `ip:${ip}:${gender}`;
+}
+
 export default async (req: Request) => {
   const url = new URL(req.url);
   const candidateId = url.searchParams.get("id");
-  const action = url.searchParams.get("action"); // 'vote', 'undo'
+  const action = url.searchParams.get("action"); // 'vote', 'undo', أو 'set'
 
   if (!candidateId) {
     return new Response("Missing ID", { status: 400 });
   }
 
-  // الحصول على عنوان IP الخاص بالزائر
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || 
-             req.headers.get("client-ip") || 
-             "unknown";
-  
-  // استخدام مخازن منفصلة
-  const votesStore = getStore("candidate-votes");
-  const ipStore = getStore("voter-ips");
-  
-  // جلب الأصوات الحالية للمرشح
-  let currentVotes = (await votesStore.get(candidateId, { type: "json" })) || 0;
+  // استخراج الجنس من المعرف (m- أو f-)
+  const gender = candidateId.startsWith('m-') ? 'male' : 'female';
+  const ipKey = getIpKey(req, gender);
 
-  // جلب الجنس من الـ candidateId (يبدأ بـ m- أو f-)
-  const gender = candidateId.startsWith("m-") ? "male" : "female";
-  const ipKey = `${ip}:${gender}`; // مفتاح فريد لكل IP + جنس
+  const store = getStore("candidate-votes");
+  const ipStore = getStore("voter-ips"); // لتخزين عناوين IP التي صوّتت
+
+  let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
 
   if (req.method === "POST") {
-    // التحقق من وجود IP في السجل (لنفس الجنس)
-    const existingVote = await ipStore.get(ipKey);
-    
+    let newVotes = currentVotes as number;
+
     if (action === "vote") {
-      if (existingVote) {
-        const record = JSON.parse(existingVote);
-        const elapsed = (Date.now() - record.timestamp) / 1000;
-        if (elapsed < 3600) {
-          // لا يزال في فترة التهدئة
-          const minutesLeft = Math.floor((3600 - elapsed) / 60);
-          const secondsLeft = Math.floor((3600 - elapsed) % 60);
-          return new Response(
-            JSON.stringify({ 
-              error: "cooldown", 
-              message: `لا يمكن التصويت مرة أخرى إلا بعد ساعة. الوقت المتبقي: ${minutesLeft} دقيقة ${secondsLeft} ثانية`,
-              minutesLeft,
-              secondsLeft
-            }),
-            { status: 403, headers: { "Content-Type": "application/json" } }
-          );
-        } else {
-          // انتهت الساعة، نحذف السجل القديم ونسمح بالتصويت
-          await ipStore.delete(ipKey);
-        }
-      }
-      
-      // تسجيل التصويت
-      const newVotes = (currentVotes as number) + 1;
-      await votesStore.set(candidateId, JSON.stringify(newVotes));
-      
-      // تسجيل IP مع وقت التصويت
-      await ipStore.set(ipKey, JSON.stringify({ 
-        candidateId, 
-        timestamp: Date.now(),
-        gender 
-      }));
-      
-      return new Response(
-        JSON.stringify({ votes: newVotes, success: true }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-      
-    } else if (action === "undo") {
-      if (!existingVote) {
+      // التحقق: هل هذا IP صوّت بالفعل لهذا الجنس؟
+      const ipVoted = await ipStore.get(ipKey);
+      if (ipVoted) {
         return new Response(
-          JSON.stringify({ error: "no_vote_to_undo", message: "لا يوجد تصويت سابق لهذا الجهاز" }),
+          JSON.stringify({ 
+            error: "ip_voted", 
+            message: "You have already voted from this device/network" 
+          }),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
       }
       
-      const record = JSON.parse(existingVote);
-      const elapsed = (Date.now() - record.timestamp) / 1000;
+      newVotes += 1;
+      
+      // تسجيل IP مع وقت التصويت (للساعة)
+      await ipStore.set(ipKey, JSON.stringify({
+        timestamp: Date.now(),
+        candidateId,
+        gender
+      }), { expire: 3600 }); // تنتهي تلقائياً بعد ساعة
+      
+    } else if (action === "undo") {
+      // التحقق: هل هذا IP صوّت لنفس المرشح؟
+      const ipRecord = await ipStore.get(ipKey);
+      if (!ipRecord) {
+        return new Response(
+          JSON.stringify({ error: "no_vote_to_undo" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      
+      const record = JSON.parse(ipRecord);
+      if (record.candidateId !== candidateId) {
+        return new Response(
+          JSON.stringify({ error: "wrong_candidate" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
       
       // التحقق من مرور ساعة
+      const elapsed = (Date.now() - record.timestamp) / 1000;
       if (elapsed < 3600) {
         const minutesLeft = Math.floor((3600 - elapsed) / 60);
         const secondsLeft = Math.floor((3600 - elapsed) % 60);
         return new Response(
           JSON.stringify({ 
             error: "cooldown", 
-            message: `لا يمكن التراجع إلا بعد ساعة. الوقت المتبقي: ${minutesLeft} دقيقة ${secondsLeft} ثانية`,
-            minutesLeft,
-            secondsLeft
+            minutesLeft, 
+            secondsLeft,
+            message: `Please wait ${minutesLeft} minutes and ${secondsLeft} seconds before undoing`
           }),
           { status: 403, headers: { "Content-Type": "application/json" } }
         );
       }
       
-      // التراجع عن التصويت
-      let newVotes = (currentVotes as number) - 1;
-      if (newVotes < 0) newVotes = 0;
-      await votesStore.set(candidateId, JSON.stringify(newVotes));
+      newVotes = Math.max(0, newVotes - 1);
       
       // حذف سجل IP
       await ipStore.delete(ipKey);
       
+    } else if (action === "set") {
+      // إجراء خاص بالأدمن
+      const { value, password } = await req.json();
+      if (password !== "Danger-MaN") {
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (typeof value !== "number" || isNaN(value)) {
+        return new Response(
+          JSON.stringify({ error: "Invalid value" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      newVotes = value;
+    } else {
       return new Response(
-        JSON.stringify({ votes: newVotes, success: true }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        JSON.stringify({ error: "Invalid action" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
-    
+
+    await store.set(candidateId, JSON.stringify(newVotes));
     return new Response(
-      JSON.stringify({ error: "Invalid action" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ votes: newVotes }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
 
