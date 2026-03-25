@@ -1,199 +1,207 @@
 import { getStore } from "@netlify/blobs";
-import { randomBytes } from "crypto";
 
-// توليد معرف جلسة عشوائي
-function generateSessionId(): string {
-  return randomBytes(32).toString('hex');
+// دوال مساعدة
+function getClientIP(req: Request): string {
+  const xForwardedFor = req.headers.get('x-forwarded-for');
+  if (xForwardedFor) {
+    return xForwardedFor.split(',')[0].trim();
+  }
+  return req.headers.get('x-real-ip') || 'unknown';
 }
 
-// الحصول على IP العميل (مع مراعاة الـ proxy)
-function getClientIP(req: Request): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.headers.get('cf-connecting-ip') || 'unknown';
+function generateSessionId(): string {
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
 export default async (req: Request) => {
   const url = new URL(req.url);
   const candidateId = url.searchParams.get("id");
   const action = url.searchParams.get("action");
-  const gender = url.searchParams.get("gender");
 
-  const votesStore = getStore("candidate-votes");
-  const sessionsStore = getStore("sessions");
+  // استرجاع الجنس من المعرف
+  const gender = candidateId?.startsWith('m-') ? 'male' : candidateId?.startsWith('f-') ? 'female' : null;
   
-  // جلب/إنشاء معرف الجلسة من الكوكيز
-  let sessionId: string;
-  const cookieHeader = req.headers.get("cookie");
-  let existingSession = false;
-  
-  if (cookieHeader) {
-    const match = cookieHeader.match(/sessionId=([^;]+)/);
-    if (match) {
-      sessionId = match[1];
-      existingSession = true;
-    }
-  }
-  
-  if (!existingSession) {
-    sessionId = generateSessionId();
-  }
-  
-  // جلب IP العميل
+  // الحصول على IP العميل
   const clientIP = getClientIP(req);
   
-  // تخزين IP آخر مرة للجلسة (للتحقق)
-  const sessionKey = `session:${sessionId}`;
-  let sessionData: any = null;
-  try {
-    const stored = await sessionsStore.get(sessionKey, { type: "json" });
-    if (stored) sessionData = stored;
-  } catch (e) { /* ignore */ }
+  // الحصول على sessionId من الكوكيز
+  const cookieHeader = req.headers.get('cookie') || '';
+  let sessionId = cookieHeader.match(/sessionId=([^;]+)/)?.[1] || null;
   
-  // التحقق من تطابق IP (لمنع سرقة الجلسة)
-  if (sessionData && sessionData.ip !== clientIP && existingSession) {
-    // IP غير مطابق، نعتبر أنها محاولة اختراق ونرفض
-    return new Response(
-      JSON.stringify({ error: "session_mismatch" }),
-      { status: 403, headers: { "Content-Type": "application/json" } }
-    );
+  // إذا لم يوجد sessionId، ننشئ واحدًا جديدًا
+  const isNewSession = !sessionId;
+  if (!sessionId) {
+    sessionId = generateSessionId();
   }
-  
-  // تحديث بيانات الجلسة إذا كانت جديدة أو IP تغير
-  if (!sessionData || sessionData.ip !== clientIP) {
-    sessionData = {
-      ip: clientIP,
-      votes: sessionData?.votes || {},
-      createdAt: sessionData?.createdAt || Date.now()
-    };
-    await sessionsStore.set(sessionKey, JSON.stringify(sessionData));
-  }
-  
-  // دالة مساعدة لإنشاء رد مع الكوكيز
-  function createResponse(data: any, status = 200, setSessionCookie = !existingSession) {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (setSessionCookie) {
-      headers["Set-Cookie"] = `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`;
-    }
-    return new Response(JSON.stringify(data), { status, headers });
-  }
-  
-  // GET: جلب الأصوات أو التحقق من حالة التصويت
+
+  const votesStore = getStore("candidate-votes");
+  const sessionsStore = getStore("vote-sessions");
+
+  // GET: جلب الأصوات
   if (req.method === "GET") {
-    // التحقق من حالة التصويت لجنس معين
-    if (action === "status" && gender) {
-      if (gender !== "male" && gender !== "female") {
-        return createResponse({ error: "Invalid gender" }, 400);
-      }
-      const voteKey = `${gender}:${sessionId}`;
-      const userVote = sessionData.votes?.[voteKey] || null;
-      if (userVote) {
-        return createResponse({
-          voted: true,
-          candidateId: userVote.candidateId,
-          voteTime: userVote.timestamp
-        }, 200, false);
-      }
-      return createResponse({ voted: false }, 200, false);
-    }
-    
-    // جلب أصوات مرشح محدد
     if (candidateId) {
-      const votes = await votesStore.get(candidateId, { type: "json" }) || 0;
-      return createResponse({ votes }, 200, false);
-    } 
-    
-    // جلب جميع الأصوات
-    const allKeys = await votesStore.list();
-    const votesMap: Record<string, number> = {};
-    for (const key of allKeys) {
-      const val = await votesStore.get(key, { type: "json" }) || 0;
-      votesMap[key] = val;
+      const votes = await votesStore.get(candidateId, { type: "json" });
+      return new Response(
+        JSON.stringify({ votes: votes || 0 }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": isNewSession ? `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}` : ''
+          }
+        }
+      );
+    } else {
+      // جلب كل الأصوات (للإدارة)
+      const allKeys = await votesStore.list();
+      const votesMap: Record<string, number> = {};
+      for (const key of allKeys) {
+        const val = await votesStore.get(key, { type: "json" });
+        votesMap[key] = val || 0;
+      }
+      return new Response(
+        JSON.stringify(votesMap),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": isNewSession ? `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}` : ''
+          }
+        }
+      );
     }
-    return createResponse(votesMap, 200, false);
   }
-  
-  // POST: تحديث الأصوات (تصويت أو تراجع)
+
+  // POST: تصويت أو تراجع
   if (req.method === "POST") {
-    if (!candidateId || !action) {
-      return createResponse({ error: "Missing id or action" }, 400);
+    if (!candidateId || !action || !gender) {
+      return new Response(
+        JSON.stringify({ error: "Missing required parameters" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
-    
-    const userGender = candidateId.startsWith('m-') ? 'male' : 'female';
-    const voteKey = `${userGender}:${sessionId}`;
-    
-    // جلب حالة التصويت لهذه الجلسة
-    let userVote = sessionData.votes?.[voteKey] || null;
-    
+
+    // جلب حالة الجلسة للمستخدم لهذا الجنس
+    const sessionKey = `${sessionId}:${gender}`;
+    const existingVote = await sessionsStore.get(sessionKey, { type: "json" }) as { 
+      candidateId: string; 
+      timestamp: number;
+      ip: string;
+    } | null;
+
     if (action === "vote") {
-      // التحقق من وجود تصويت سابق
-      if (userVote) {
-        return createResponse({ error: "already_voted" }, 403);
+      // التحقق من عدم وجود تصويت سابق
+      if (existingVote) {
+        return new Response(
+          JSON.stringify({ error: "already_voted", message: "You have already voted in this category" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
       }
-      
+
       // تحديث عدد الأصوات
-      let currentVotes = await votesStore.get(candidateId, { type: "json" }) || 0;
+      let currentVotes = (await votesStore.get(candidateId, { type: "json" })) || 0;
       currentVotes += 1;
-      await votesStore.set(candidateId, JSON.stringify(currentVotes));
-      
-      // تسجيل التصويت في الجلسة
-      if (!sessionData.votes) sessionData.votes = {};
-      sessionData.votes[voteKey] = {
+      await votesStore.set(candidateId, currentVotes);
+
+      // تخزين حالة التصويت مع IP ووقت التصويت
+      await sessionsStore.set(sessionKey, JSON.stringify({
         candidateId,
-        timestamp: Date.now()
-      };
-      await sessionsStore.set(sessionKey, JSON.stringify(sessionData));
-      
-      return createResponse({ votes: currentVotes }, 200);
-    }
-    
-    if (action === "undo") {
-      // التحقق من وجود تصويت لهذا المرشح
-      if (!userVote || userVote.candidateId !== candidateId) {
-        return createResponse({ error: "no_vote_to_undo" }, 403);
+        timestamp: Date.now(),
+        ip: clientIP
+      }));
+
+      return new Response(
+        JSON.stringify({ success: true, votes: currentVotes }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+          }
+        }
+      );
+    } 
+    else if (action === "undo") {
+      // التحقق من وجود تصويت سابق
+      if (!existingVote) {
+        return new Response(
+          JSON.stringify({ error: "no_vote_to_undo", message: "No vote to undo" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
       }
-      
-      // التحقق من مرور ساعة
-      const elapsed = (Date.now() - userVote.timestamp) / 1000;
+
+      // التحقق من أن المستخدم هو صاحب التصويت (عن طريق IP)
+      if (existingVote.ip !== clientIP) {
+        return new Response(
+          JSON.stringify({ error: "unauthorized", message: "You can only undo your own vote" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // التحقق من مرور ساعة على الأقل
+      const elapsed = (Date.now() - existingVote.timestamp) / 1000;
       if (elapsed < 3600) {
         const minutesLeft = Math.floor((3600 - elapsed) / 60);
         const secondsLeft = Math.floor((3600 - elapsed) % 60);
-        return createResponse({ 
-          error: "cooldown", 
-          minutesLeft, 
-          secondsLeft 
-        }, 403);
+        return new Response(
+          JSON.stringify({ 
+            error: "cooldown", 
+            message: "You can only undo after one hour",
+            minutesLeft,
+            secondsLeft
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
       }
-      
+
+      // التحقق من أن التصويت هو لنفس المرشح
+      if (existingVote.candidateId !== candidateId) {
+        return new Response(
+          JSON.stringify({ error: "wrong_candidate", message: "You voted for a different candidate" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
       // تحديث عدد الأصوات
-      let currentVotes = await votesStore.get(candidateId, { type: "json" }) || 0;
+      let currentVotes = (await votesStore.get(candidateId, { type: "json" })) || 0;
       if (currentVotes > 0) currentVotes -= 1;
-      await votesStore.set(candidateId, JSON.stringify(currentVotes));
-      
-      // إزالة سجل التصويت من الجلسة
-      delete sessionData.votes[voteKey];
-      await sessionsStore.set(sessionKey, JSON.stringify(sessionData));
-      
-      return createResponse({ votes: currentVotes }, 200);
+      await votesStore.set(candidateId, currentVotes);
+
+      // حذف حالة التصويت
+      await sessionsStore.delete(sessionKey);
+
+      return new Response(
+        JSON.stringify({ success: true, votes: currentVotes }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
     }
-    
-    if (action === "set") {
-      // إجراء خاص بالأدمن
+    else if (action === "set" && candidateId === "admin") {
+      // إجراء خاص بالأدمن (تعديل الأصوات يدويًا)
       const { value, password } = await req.json();
       if (password !== "Danger-MaN") {
-        return createResponse({ error: "Unauthorized" }, 401);
+        return new Response(
+          JSON.stringify({ error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
       }
-      if (typeof value !== "number" || isNaN(value)) {
-        return createResponse({ error: "Invalid value" }, 400);
-      }
-      await votesStore.set(candidateId, JSON.stringify(value));
-      return createResponse({ votes: value }, 200);
+      // هنا يمكن إضافة منطق لتعديل الأصوات لمرشح محدد
+      return new Response(
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     }
-    
-    return createResponse({ error: "Invalid action" }, 400);
+
+    return new Response(
+      JSON.stringify({ error: "Invalid action" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
   }
-  
-  return createResponse({ error: "Method not allowed" }, 405);
+
+  return new Response(
+    JSON.stringify({ error: "Method not allowed" }),
+    { status: 405, headers: { "Content-Type": "application/json" } }
+  );
 };
