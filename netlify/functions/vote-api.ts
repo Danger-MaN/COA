@@ -1,5 +1,19 @@
 import { getStore } from "@netlify/blobs";
 
+// قائمة الدول المسموح بها (الدول العربية والشرق الأوسط)
+const ALLOWED_COUNTRIES = new Set([
+  // دول الخليج العربي
+  'SA', 'AE', 'KW', 'QA', 'BH', 'OM',
+  // دول المشرق العربي
+  'EG', 'JO', 'LB', 'SY', 'PS', 'IQ',
+  // دول المغرب العربي
+  'MA', 'DZ', 'TN', 'LY', 'MR',
+  // دول أخرى في الشرق الأوسط
+  'YE', 'SD', 'SO', 'DJ', 'TR', 'IR', 'PK', 'AF',
+  // دول عربية أخرى
+  'ER', 'KM',
+]);
+
 // دالة لاستخراج IP الحقيقي
 function getRealIp(req: Request): string {
   const headers = [
@@ -41,26 +55,24 @@ function isPrivateIp(ip: string): boolean {
   return false;
 }
 
-// التحقق من أن IP ليس بروكسي أو VPN باستخدام IPinfo
-async function isProxyOrVpn(ip: string): Promise<boolean> {
+// التحقق من أن IP في منطقة مسموحة (الشرق الأوسط والعالم العربي) - مع رسالة عامة
+async function isAllowedCountry(ip: string): Promise<boolean> {
   try {
-    // يمكنك استخدام IPinfo.io أو ipapi.co
-    const response = await fetch(`https://ipinfo.io/${ip}/json`, {
-      headers: {
-        // إذا كان لديك مفتاح API، أضفه هنا
-        // 'Authorization': 'Bearer your_token'
-      }
-    });
+    const response = await fetch(`https://ipapi.co/${ip}/json/`);
     const data = await response.json();
+    const countryCode = data.country_code;
     
-    // التحقق من وجود بروكسي أو VPN (حسب البيانات التي يعيدها IPinfo)
-    return data.privacy?.vpn === true || 
-           data.privacy?.proxy === true || 
-           data.privacy?.tor === true ||
-           data.hosting === true;
+    // التحقق مما إذا كانت الدولة في القائمة المسموحة
+    const allowed = countryCode ? ALLOWED_COUNTRIES.has(countryCode) : false;
+    
+    // تسجيل في console للتصحيح فقط (غير مرئي للمستخدم)
+    console.log(`IP: ${ip}, Country: ${countryCode}, Allowed: ${allowed}`);
+    
+    return allowed;
   } catch (error) {
-    console.error('Error checking proxy:', error);
-    return false; // في حالة الخطأ، نسمح بالتصويت (أو يمكنك رفضه)
+    console.error('Error checking country:', error);
+    // في حالة الخطأ، نسمح بالتصويت (أو يمكنك رفضه حسب رغبتك)
+    return true;
   }
 }
 
@@ -83,16 +95,11 @@ export default async (req: Request) => {
   const ipKey = getIpKey(req, gender);
   const realIp = getRealIp(req);
 
-  // التحقق من أن IP ليس بروكسي (اختياري - يمكن تفعيله)
-  // const isProxy = await isProxyOrVpn(realIp);
-  // if (isProxy && action === 'vote') {
-  //   return new Response(JSON.stringify({ error: "proxy_detected", message: "VPN/Proxy not allowed" }), { status: 403 });
-  // }
-
   const store = getStore("candidate-votes");
   const ipStore = getStore("voter-ips");
   let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
 
+  // GET: جلب الأصوات الحالية
   if (req.method === "GET") {
     return new Response(
       JSON.stringify({ votes: currentVotes }),
@@ -100,10 +107,24 @@ export default async (req: Request) => {
     );
   }
 
+  // POST: تحديث الأصوات
   if (req.method === "POST") {
     let newVotes = currentVotes as number;
 
+    // التحقق من الدولة (فقط عند التصويت، وليس عند التراجع)
     if (action === "vote") {
+      // التحقق من الدولة
+      const allowed = await isAllowedCountry(realIp);
+      
+      if (!allowed) {
+        // نعيد نفس الخطأ الذي يظهر عند مشكلة الشبكة - لا نلفت النظر
+        return new Response(
+          JSON.stringify({ error: "network_error" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      
+      // التحقق من أن IP لم يصوت سابقاً
       const ipVoted = await ipStore.get(ipKey);
       if (ipVoted) {
         return new Response(
