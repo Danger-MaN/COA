@@ -177,8 +177,8 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
 export function getVoteErrorMessage(error: string, lang: 'ar' | 'en', minutesLeft?: number, secondsLeft?: number, country?: string): string {
   if (error === 'country_not_allowed') {
     return lang === 'ar' 
-      ? 'التصويت مقتصر على دول الشرق الأوسط فقط. إذا كنت في الشرق الأوسط، تأكد من عدم استخدام VPN.'
-      : 'Voting is restricted to Middle Eastern countries only. If you are in the Middle East, please make sure you are not using a VPN.';
+      ? 'لا يمكنك التصويت في الوقت الحالي.'
+      : 'You cannot vote at this time.';
   }
   if (error === 'ip_voted') {
     return lang === 'ar' 
