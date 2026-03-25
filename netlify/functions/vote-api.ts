@@ -5,7 +5,9 @@ function getIpKey(req: Request, gender: string): string {
   const ip = req.headers.get('x-forwarded-for') || 
              req.headers.get('x-real-ip') || 
              'unknown';
-  return `ip:${ip}:${gender}`;
+  // نأخذ أول IP إذا كان هناك عدة IPs (مثل x-forwarded-for: client, proxy1, proxy2)
+  const firstIp = ip.split(',')[0].trim();
+  return `ip:${firstIp}:${gender}`;
 }
 
 export default async (req: Request) => {
@@ -26,6 +28,15 @@ export default async (req: Request) => {
 
   let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
 
+  // GET: جلب الأصوات الحالية
+  if (req.method === "GET") {
+    return new Response(
+      JSON.stringify({ votes: currentVotes }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // POST: تحديث الأصوات
   if (req.method === "POST") {
     let newVotes = currentVotes as number;
 
@@ -44,12 +55,12 @@ export default async (req: Request) => {
       
       newVotes += 1;
       
-      // تسجيل IP مع وقت التصويت (للساعة)
+      // تسجيل IP مع وقت التصويت (تنتهي تلقائياً بعد ساعة)
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
         candidateId,
         gender
-      }), { expire: 3600 }); // تنتهي تلقائياً بعد ساعة
+      }), { ttl: 3600 }); // تنتهي تلقائياً بعد ساعة
       
     } else if (action === "undo") {
       // التحقق: هل هذا IP صوّت لنفس المرشح؟
@@ -120,9 +131,5 @@ export default async (req: Request) => {
     );
   }
 
-  // GET: جلب الأصوات الحالية
-  return new Response(
-    JSON.stringify({ votes: currentVotes }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
+  return new Response("Method not allowed", { status: 405 });
 };
