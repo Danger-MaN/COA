@@ -150,40 +150,40 @@ export interface VoteResult {
   country?: string;
 }
 
-let cachedFingerprint: string | null = null;
-
-export async function getFingerprint(): Promise<string> {
-  if (cachedFingerprint) return cachedFingerprint;
-  if (!(window as any).FingerprintJS) {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js';
-      script.onload = resolve;
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-  }
-  const fp = await (window as any).FingerprintJS.load();
-  const result = await fp.get();
-  cachedFingerprint = result.visitorId;
-  return cachedFingerprint;
+export interface VoteResult {
+  success: boolean;
+  votes?: number;
+  error?: string;
+  minutesLeft?: number;
+  secondsLeft?: number;
+  country?: string;
 }
 
-export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo'): Promise<VoteResult> {
+export async function updateLiveVote(
+  candidateId: string,
+  action: 'vote' | 'undo',
+  fingerprint?: string
+): Promise<VoteResult> {
   try {
-    const fingerprint = await getFingerprint();
     const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fingerprint })
     });
     const data = await response.json();
+    
     if (!response.ok) {
-      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
+      return { 
+        success: false, 
+        error: data.error,
+        minutesLeft: data.minutesLeft,
+        secondsLeft: data.secondsLeft,
+        country: data.country
+      };
     }
+    
     return { success: true, votes: data.votes };
-  } catch (err) {
-    console.error('updateLiveVote error:', err);
+  } catch {
     return { success: false, error: 'network_error' };
   }
 }
