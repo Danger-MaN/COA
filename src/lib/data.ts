@@ -155,7 +155,7 @@ let cachedFingerprint: string | null = null;
 export async function getFingerprint(): Promise<string> {
   if (cachedFingerprint) return cachedFingerprint;
   
-  // تحميل مكتبة FingerprintJS ديناميكياً (إذا لم تكن موجودة)
+  // تحميل مكتبة FingerprintJS إذا لم تكن موجودة
   if (!(window as any).FingerprintJS) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -178,10 +178,19 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
     const response = await fetch(`/.netlify/functions/vote-api?id=${encodeURIComponent(candidateId)}&action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fingerprint })  // أضف البصمة
+      body: JSON.stringify({ fingerprint })
     });
     const data = await response.json();
-    // ... باقي الكود
+    if (!response.ok) {
+      return { 
+        success: false, 
+        error: data.error,
+        minutesLeft: data.minutesLeft,
+        secondsLeft: data.secondsLeft,
+        country: data.country
+      };
+    }
+    return { success: true, votes: data.votes };
   } catch {
     return { success: false, error: 'network_error' };
   }
