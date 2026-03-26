@@ -1,16 +1,20 @@
 import { getStore } from "@netlify/blobs";
 
+// ===== إعدادات المدة الزمنية (بالساعات) =====
+const VOTE_BLOCK_HOURS = 24;    // ساعات منع التصويت المتكرر (1 = ساعة، 24 = يوم)
+const UNDO_COOLDOWN_HOURS = 1;  // ساعات الانتظار قبل السماح بالتراجع
+// ============================================
+
+// تحويل الساعات إلى ثواني
+const VOTE_BLOCK_DURATION = VOTE_BLOCK_HOURS * 3600;
+const UNDO_COOLDOWN_DURATION = UNDO_COOLDOWN_HOURS * 3600;
+
 // قائمة الدول المسموحة في الشرق الأوسط والعالم العربي
 const ALLOWED_COUNTRIES = new Set([
-  // دول الخليج العربي
   'SA', 'AE', 'KW', 'QA', 'BH', 'OM',
-  // دول الشام
   'EG', 'JO', 'LB', 'PS', 'SY', 'IQ',
-  // شمال أفريقيا
   'LY', 'TN', 'DZ', 'MA', 'MR', 'SD',
-  // اليمن والقرن الأفريقي
   'YE', 'SO', 'DJ',
-  // دول أخرى في الشرق الأوسط
   'TR', 'IR', 'PK', 'AF',
 ]);
 
@@ -58,7 +62,6 @@ function isPrivateIp(ip: string): boolean {
 // دالة للتحقق من موقع المستخدم باستخدام IPinfo
 async function getUserCountry(ip: string): Promise<{ country: string | null; allowed: boolean; message?: string }> {
   try {
-    // استخدام IPinfo.io (مجاني 50,000 طلب/شهر)
     const response = await fetch(`https://ipinfo.io/${ip}/json`, {
       headers: {
         // يمكنك إضافة مفتاح API إذا كان لديك لزيادة الحدود
@@ -68,7 +71,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
     
     if (!response.ok) {
       console.error(`IPinfo API error: ${response.status}`);
-      return { country: null, allowed: true }; // في حالة الخطأ، نسمح بالتصويت
+      return { country: null, allowed: true };
     }
     
     const data = await response.json();
@@ -88,7 +91,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
     };
   } catch (error) {
     console.error('Error checking user country:', error);
-    return { country: null, allowed: true }; // في حالة الخطأ، نسمح بالتصويت
+    return { country: null, allowed: true };
   }
 }
 
@@ -167,11 +170,12 @@ export default async (req: Request) => {
       }
       
       newVotes += 1;
+      // استخدام VOTE_BLOCK_DURATION بدلاً من 3600
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
         candidateId,
         gender
-      }), { ttl: 3600 });
+      }), { ttl: VOTE_BLOCK_DURATION });
       
     } else if (action === "undo") {
       const ipRecord = await ipStore.get(ipKey);
@@ -191,9 +195,10 @@ export default async (req: Request) => {
       }
       
       const elapsed = (Date.now() - record.timestamp) / 1000;
-      if (elapsed < 3600) {
-        const minutesLeft = Math.floor((3600 - elapsed) / 60);
-        const secondsLeft = Math.floor((3600 - elapsed) % 60);
+      // استخدام UNDO_COOLDOWN_DURATION بدلاً من 3600
+      if (elapsed < UNDO_COOLDOWN_DURATION) {
+        const minutesLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) / 60);
+        const secondsLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) % 60);
         return new Response(
           JSON.stringify({ error: "cooldown", minutesLeft, secondsLeft }),
           { status: 403, headers: { "Content-Type": "application/json" } }
