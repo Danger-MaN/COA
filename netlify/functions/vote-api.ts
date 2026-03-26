@@ -87,7 +87,8 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
     return {
       country,
       allowed,
-      message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
+      //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
+      message: allowed ? undefined : `لا يمكنك التصويت في الوقت الحالي`
     };
   } catch (error) {
     console.error('Error checking user country:', error);
@@ -139,7 +140,8 @@ export default async (req: Request) => {
         JSON.stringify({ 
           error: "country_not_allowed", 
           country,
-          message: message || "التصويت مقتصر على دول الشرق الأوسط فقط"
+          //message: message || "التصويت مقتصر على دول الشرق الأوسط فقط"
+          message: message || "لا يمكنك التصويت في الوقت الحالي"
         }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
