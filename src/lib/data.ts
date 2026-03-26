@@ -154,8 +154,6 @@ let cachedFingerprint: string | null = null;
 
 export async function getFingerprint(): Promise<string> {
   if (cachedFingerprint) return cachedFingerprint;
-  
-  // تحميل مكتبة FingerprintJS إذا لم تكن موجودة
   if (!(window as any).FingerprintJS) {
     await new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -165,7 +163,6 @@ export async function getFingerprint(): Promise<string> {
       document.head.appendChild(script);
     });
   }
-  
   const fp = await (window as any).FingerprintJS.load();
   const result = await fp.get();
   cachedFingerprint = result.visitorId;
@@ -182,16 +179,11 @@ export async function updateLiveVote(candidateId: string, action: 'vote' | 'undo
     });
     const data = await response.json();
     if (!response.ok) {
-      return { 
-        success: false, 
-        error: data.error,
-        minutesLeft: data.minutesLeft,
-        secondsLeft: data.secondsLeft,
-        country: data.country
-      };
+      return { success: false, error: data.error, minutesLeft: data.minutesLeft, secondsLeft: data.secondsLeft };
     }
     return { success: true, votes: data.votes };
-  } catch {
+  } catch (err) {
+    console.error('updateLiveVote error:', err);
     return { success: false, error: 'network_error' };
   }
 }
