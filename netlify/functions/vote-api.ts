@@ -1,23 +1,91 @@
 import { getStore } from "@netlify/blobs";
 
 // ===== إعدادات المدة الزمنية (بالساعات) =====
-const VOTE_BLOCK_HOURS = 24;
-const UNDO_COOLDOWN_HOURS = 1;
+const VOTE_BLOCK_HOURS = 24;    // ساعات منع التصويت المتكرر
+const UNDO_COOLDOWN_HOURS = 1;  // ساعات الانتظار قبل السماح بالتراجع
 // ============================================
 
 // ===== إعدادات الأمان =====
-const ENABLE_COUNTRY_FILTER = true;
-const ENABLE_FINGERPRINT = true;
+const ENABLE_COUNTRY_FILTER = true;   // تشغيل/إيقاف فلترة الدول
+const ENABLE_FINGERPRINT = true;      // تشغيل/إيقاف استخدام بصمة المتصفح
 // ==========================
 
 const VOTE_BLOCK_DURATION = VOTE_BLOCK_HOURS * 3600;
 const UNDO_COOLDOWN_DURATION = UNDO_COOLDOWN_HOURS * 3600;
 
-const ALLOWED_COUNTRIES = new Set([...]);
+// قائمة الدول المسموحة
+const ALLOWED_COUNTRIES = new Set([
+  'SA', 'AE', 'KW', 'QA', 'BH', 'OM',
+  'EG', 'JO', 'LB', 'PS', 'SY', 'IQ',
+  'LY', 'TN', 'DZ', 'MA', 'MR', 'SD',
+  'YE', 'SO', 'DJ',
+  'TR', 'IR', 'PK', 'AF',
+]);
 
-function getRealIp(req: Request): string { /* ... */ }
-function isPrivateIp(ip: string): boolean { /* ... */ }
-async function getUserCountry(ip: string): Promise<{ country: string | null; allowed: boolean; message?: string }> { /* ... */ }
+// دالة لاستخراج IP الحقيقي
+function getRealIp(req: Request): string {
+  const headers = [
+    'x-forwarded-for',
+    'x-real-ip',
+    'cf-connecting-ip',
+    'fastly-client-ip',
+    'x-original-forwarded-for',
+    'true-client-ip'
+  ];
+  for (const header of headers) {
+    const value = req.headers.get(header);
+    if (value && value.trim() !== '') {
+      const ips = value.split(',').map(ip => ip.trim());
+      for (const ip of ips) {
+        if (!isPrivateIp(ip) && ip !== 'unknown') {
+          return ip;
+        }
+      }
+      return ips[0];
+    }
+  }
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+}
+
+function isPrivateIp(ip: string): boolean {
+  if (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') return true;
+  const parts = ip.split('.');
+  if (parts.length === 4) {
+    const first = parseInt(parts[0], 10);
+    const second = parseInt(parts[1], 10);
+    if (first === 10) return true;
+    if (first === 172 && second >= 16 && second <= 31) return true;
+    if (first === 192 && second === 168) return true;
+    if (first === 127) return true;
+    if (first === 169 && second === 254) return true;
+  }
+  return false;
+}
+
+async function getUserCountry(ip: string): Promise<{ country: string | null; allowed: boolean; message?: string }> {
+  try {
+    const response = await fetch(`https://ipinfo.io/${ip}/json`);
+    if (!response.ok) {
+      console.error(`IPinfo API error: ${response.status}`);
+      return { country: null, allowed: true };
+    }
+    const data = await response.json();
+    const country = data.country;
+    if (!country) {
+      return { country: null, allowed: true };
+    }
+    const allowed = ALLOWED_COUNTRIES.has(country);
+    const countryName = data.country_name || country;
+    return {
+      country,
+      allowed,
+      message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
+    };
+  } catch (error) {
+    console.error('Error checking user country:', error);
+    return { country: null, allowed: true };
+  }
+}
 
 function getIpKey(req: Request, gender: string): string {
   const ip = getRealIp(req);
@@ -41,11 +109,13 @@ export default async (req: Request) => {
   const gender = candidateId.startsWith('m-') ? 'male' : 'female';
   const realIp = getRealIp(req);
 
-  // فلترة الدول
   if (action === 'vote' && ENABLE_COUNTRY_FILTER) {
     const { allowed, country, message } = await getUserCountry(realIp);
     if (!allowed) {
-      return new Response(JSON.stringify({ error: "country_not_allowed", country, message }), { status: 403 });
+      return new Response(
+        JSON.stringify({ error: "country_not_allowed", country, message }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
     }
   }
 
@@ -54,16 +124,17 @@ export default async (req: Request) => {
   let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
 
   if (req.method === "GET") {
-    return new Response(JSON.stringify({ votes: currentVotes }), { status: 200 });
+    return new Response(
+      JSON.stringify({ votes: currentVotes }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   if (req.method === "POST") {
     let body: any = {};
     try {
       body = await req.json();
-    } catch (e) {
-      console.error("Failed to parse JSON body:", e);
-    }
+    } catch (e) {}
     const fingerprint = body.fingerprint;
     const ipKey = getIpKey(req, gender);
     const fpKey = getFpKey(req, gender, fingerprint);
@@ -74,7 +145,10 @@ export default async (req: Request) => {
         const existingIp = await ipStore.get(ipKey);
         const existingFp = fpKey ? await ipStore.get(fpKey) : null;
         if (existingIp || existingFp) {
-          return new Response(JSON.stringify({ error: "already_voted" }), { status: 403 });
+          return new Response(
+            JSON.stringify({ error: "already_voted" }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
         }
 
         newVotes += 1;
@@ -90,19 +164,28 @@ export default async (req: Request) => {
         if (fpKey) record = await ipStore.get(fpKey);
         if (!record) record = await ipStore.get(ipKey);
         if (!record) {
-          return new Response(JSON.stringify({ error: "no_vote_to_undo" }), { status: 403 });
+          return new Response(
+            JSON.stringify({ error: "no_vote_to_undo" }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
         }
 
         const voteData = JSON.parse(record);
         if (voteData.candidateId !== candidateId) {
-          return new Response(JSON.stringify({ error: "wrong_candidate" }), { status: 403 });
+          return new Response(
+            JSON.stringify({ error: "wrong_candidate" }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
         }
 
         const elapsed = (Date.now() - voteData.timestamp) / 1000;
         if (elapsed < UNDO_COOLDOWN_DURATION) {
           const minutesLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) / 60);
           const secondsLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) % 60);
-          return new Response(JSON.stringify({ error: "cooldown", minutesLeft, secondsLeft }), { status: 403 });
+          return new Response(
+            JSON.stringify({ error: "cooldown", minutesLeft, secondsLeft }),
+            { status: 403, headers: { "Content-Type": "application/json" } }
+          );
         }
 
         newVotes = Math.max(0, newVotes - 1);
@@ -112,22 +195,37 @@ export default async (req: Request) => {
       else if (action === "set") {
         const { value, password } = body;
         if (password !== "Danger-MaN") {
-          return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+          return new Response(
+            JSON.stringify({ error: "Unauthorized" }),
+            { status: 401, headers: { "Content-Type": "application/json" } }
+          );
         }
         if (typeof value !== "number" || isNaN(value)) {
-          return new Response(JSON.stringify({ error: "Invalid value" }), { status: 400 });
+          return new Response(
+            JSON.stringify({ error: "Invalid value" }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          );
         }
         newVotes = value;
       } 
       else {
-        return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
+        return new Response(
+          JSON.stringify({ error: "Invalid action" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
       }
 
       await store.set(candidateId, JSON.stringify(newVotes));
-      return new Response(JSON.stringify({ votes: newVotes }), { status: 200 });
+      return new Response(
+        JSON.stringify({ votes: newVotes }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
     } catch (err) {
       console.error("Error in vote/undo logic:", err);
-      return new Response(JSON.stringify({ error: "server_error", details: err.message }), { status: 500 });
+      return new Response(
+        JSON.stringify({ error: "server_error", details: err.message }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
     }
   }
 
