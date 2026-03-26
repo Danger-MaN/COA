@@ -83,7 +83,8 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
     return {
       country,
       allowed,
-      message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
+      //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
+      message: allowed ? undefined: 'لا يمكنك التصويت في الوقت الحالي'
     };
   } catch (error) {
     console.error('Error checking user country:', error);
@@ -94,7 +95,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
 // فحص VPN باستخدام IPQualityScore (المفتاح مكتوب داخل الكود)
 async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
   if (!ENABLE_PROXY_CHECK) return false;
-  if (!IPQS_API_KEY || IPQS_API_KEY === "ضع_المفتاح_هنا") {
+  if (!IPQS_API_KEY || IPQS_API_KEY === IPQS_API_KEY) {
     console.warn('IPQS_API_KEY not set or still placeholder, proxy check disabled');
     return false;
   }
