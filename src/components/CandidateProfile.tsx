@@ -4,18 +4,6 @@ import { Lang } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
-const [fingerprint, setFingerprint] = useState<string | null>(null);
-
-useEffect(() => {
-  if (typeof window !== 'undefined' && (window as any).FingerprintJS) {
-    (window as any).FingerprintJS.load().then((fp: any) => {
-      fp.get().then((result: any) => {
-        setFingerprint(result.visitorId);
-      });
-    });
-  }
-}, []);
-
 interface ProfileProps {
   candidate: Candidate;
   lang: Lang;
@@ -55,10 +43,25 @@ export function CandidateProfile({
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [localRank, setLocalRank] = useState<number | null>(null);
+  const [fingerprint, setFingerprint] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
+
+  // جلب بصمة المتصفح
+  useEffect(() => {
+    if (typeof window !== 'undefined' && (window as any).FingerprintJS) {
+      (window as any).FingerprintJS.load()
+        .then((fp: any) => fp.get())
+        .then((result: any) => {
+          setFingerprint(result.visitorId);
+        })
+        .catch((err: any) => console.error('Fingerprint error:', err));
+    } else {
+      console.warn('FingerprintJS not loaded');
+    }
+  }, []);
 
   // إذا لم يتم تمرير rank صحيح، نحسب المركز بأنفسنا
   useEffect(() => {
@@ -131,7 +134,7 @@ export function CandidateProfile({
     }
     loadLiveVotes();
   }, [candidate.id]);
-  
+
   const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
@@ -143,8 +146,8 @@ export function CandidateProfile({
         const errorMsg = getVoteErrorMessage(result.error!, lang, result.minutesLeft, result.secondsLeft, result.country);
         toast.error(errorMsg);
         return;
-     }
-    
+      }
+      
       const success = castVote(candidate.id, candidate.gender);
       if (success) {
         localStorage.setItem(`taj_vote_time_${candidate.gender}`, Date.now().toString());
