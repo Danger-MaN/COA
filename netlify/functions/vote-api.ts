@@ -96,7 +96,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
 async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
   if (!ENABLE_PROXY_CHECK) return false;
   // التحقق من أن المفتاح موجود وليس السلسلة التوجيهية
-  if (!IPQS_API_KEY || IPQS_API_KEY === "ضع_المفتاح_هنا") {
+  if (!IPQS_API_KEY || IPQS_API_KEY === "Magdi") {
     console.warn('IPQS_API_KEY not set or still placeholder, proxy check disabled');
     return false;
   }
