@@ -96,7 +96,8 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
       country,
       allowed,
       //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
-      message: allowed ? undefined : ': 'لا يمكنك التصويت في الوقت الحالي'
+      // السطر 99
+      message: allowed ? undefined : ": لا يمكنك التصويت في الوقت الحالي"
     };
   } catch (error) {
     console.error('Error checking user country:', error);
