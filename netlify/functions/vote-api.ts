@@ -84,7 +84,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
       country,
       allowed,
       //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
-      message: allowed ? undefined: 'لا يمكنك التصويت في الوقت الحالي'
+      message: allowed ? undefined : 'لا يمكنك التصويت في الوقت الحالي'
     };
   } catch (error) {
     console.error('Error checking user country:', error);
@@ -95,7 +95,8 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
 // فحص VPN باستخدام IPQualityScore (المفتاح مكتوب داخل الكود)
 async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
   if (!ENABLE_PROXY_CHECK) return false;
-  if (!IPQS_API_KEY || IPQS_API_KEY === IPQS_API_KEY) {
+  // التحقق من أن المفتاح موجود وليس السلسلة التوجيهية
+  if (!IPQS_API_KEY || IPQS_API_KEY === "eg1ysGyj3T9rlaCxmUkw8MmJtdQ0XZWK") {
     console.warn('IPQS_API_KEY not set or still placeholder, proxy check disabled');
     return false;
   }
@@ -113,17 +114,25 @@ async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
       console.warn(`IPQS API returned success=false for ${ip}`);
       return false;
     }
+    
     // نمنع أي IP يُصنف كـ proxy, vpn, tor, أو درجة احتيال عالية
+    // سنمنع أيضاً إذا كانت risk_score > 0 أو fraud_score > 0 (لأقصى حماية)
     const isProxy = data.proxy === true;
     const isVpn = data.vpn === true;
     const isTor = data.tor === true;
-    const isFraud = data.fraud_score > 75;
-    const isHighRisk = data.risk_score > 75;
+    const isFraud = data.fraud_score > 0;     // أي درجة احتيال > 0 تعتبر مشبوهة
+    const isHighRisk = data.risk_score > 0;   // أي درجة مخاطرة > 0 تعتبر مشبوهة
 
-    return isProxy || isVpn || isTor || isFraud || isHighRisk;
+    // إذا كانت البيانات لا تحتوي على هذه الحقول، نمنع بشكل افتراضي؟ لا، فقط نمنع إذا تم تحديدها
+    const isSuspicious = isProxy || isVpn || isTor || isFraud || isHighRisk;
+    
+    if (isSuspicious) {
+      console.log(`IP ${ip} blocked because: proxy=${isProxy}, vpn=${isVpn}, tor=${isTor}, fraud_score=${data.fraud_score}, risk_score=${data.risk_score}`);
+    }
+    return isSuspicious;
   } catch (error) {
     console.error('Error checking proxy with IPQS:', error);
-    return false;
+    return false; // في حالة الخطأ، نسمح (يمكن تغيير إلى true لمنع كل التصويت عند فشل API)
   }
 }
 
