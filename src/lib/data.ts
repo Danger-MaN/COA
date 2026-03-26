@@ -200,7 +200,7 @@ export function getVoteErrorMessage(error: string, lang: 'ar' | 'en', minutesLef
   if (error === 'network_error') {
     return lang === 'ar' ? 'خطأ في الاتصال بالخادم' : 'Connection error';
   }
-  return lang === 'ar' ? 'حدث خطأ غير متوقع' : 'Unexpected error';
+  return lang === 'ar' ? 'حدث خطأ غير متوقع، يبدوا ان هناك تلاعب' : 'Unexpected error, It seems there is manipulation.';
 }
 
 /* ── Exported Functions (Synchronous) ── */
