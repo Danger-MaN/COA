@@ -9,6 +9,11 @@ const UNDO_COOLDOWN_HOURS = 1;  // ساعات الانتظار قبل السما
 const VOTE_BLOCK_DURATION = VOTE_BLOCK_HOURS * 3600;
 const UNDO_COOLDOWN_DURATION = UNDO_COOLDOWN_HOURS * 3600;
 
+// ===== إعدادات التحقق =====
+const ENABLE_COUNTRY_CHECK = true;   // تفعيل/تعطيل فحص الدولة (الشرق الأوسط)
+const ENABLE_PROXY_CHECK = true;     // تفعيل/تعطيل فحص VPN/بروكسي عبر IPQualityScore
+// ==========================
+
 // قائمة الدول المسموحة في الشرق الأوسط والعالم العربي
 const ALLOWED_COUNTRIES = new Set([
   'SA', 'AE', 'KW', 'QA', 'BH', 'OM',
@@ -18,7 +23,7 @@ const ALLOWED_COUNTRIES = new Set([
   'TR', 'IR', 'PK', 'AF',
 ]);
 
-// دالة لاستخراج IP الحقيقي
+// دالة لاستخراج IP الحقيقي (نفس السابق)
 function getRealIp(req: Request): string {
   const headers = [
     'x-forwarded-for',
@@ -59,8 +64,11 @@ function isPrivateIp(ip: string): boolean {
   return false;
 }
 
-// دالة للتحقق من موقع المستخدم باستخدام IPinfo
+// دالة للتحقق من موقع المستخدم باستخدام IPinfo (نفس السابق)
 async function getUserCountry(ip: string): Promise<{ country: string | null; allowed: boolean; message?: string }> {
+  if (!ENABLE_COUNTRY_CHECK) {
+    return { country: null, allowed: true };
+  }
   try {
     const response = await fetch(`https://ipinfo.io/${ip}/json`, {
       headers: {
@@ -88,7 +96,7 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
       country,
       allowed,
       //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
-      message: allowed ? undefined : `لا يمكنك التصويت في الوقت الحالي`
+      message: allowed ? undefined : ': 'لا يمكنك التصويت في الوقت الحالي'
     };
   } catch (error) {
     console.error('Error checking user country:', error);
@@ -96,23 +104,42 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
   }
 }
 
-// دالة للتحقق من وجود بروكسي أو VPN
-async function isProxyOrVpn(ip: string): Promise<boolean> {
+// دالة للتحقق من وجود بروكسي أو VPN باستخدام IPQualityScore
+async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
+  if (!ENABLE_PROXY_CHECK) {
+    return false; // إذا كان الفحص معطلاً، نسمح
+  }
+  const apiKey = process.env.IPQS_API_KEY;
+  if (!apiKey) {
+    console.warn('IPQS_API_KEY not set, proxy check disabled');
+    return false; // لا نمنع إذا لم يكن المفتاح موجوداً
+  }
   try {
-    const response = await fetch(`https://ipinfo.io/${ip}/json`);
+    const url = `https://ipqualityscore.com/api/json/ip/${apiKey}/${ip}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`IPQS API error: ${response.status}`);
+      return false;
+    }
     const data = await response.json();
-    
-    return data.privacy?.vpn === true || 
-           data.privacy?.proxy === true || 
-           data.privacy?.tor === true ||
-           data.hosting === true;
+    // إذا كانت النتيجة غير ناجحة أو IP غير صالح، نسمح
+    if (!data.success) {
+      console.warn(`IPQS API returned success=false for ${ip}`);
+      return false;
+    }
+    // البيانات المهمة: proxy, vpn, tor
+    const isProxy = data.proxy === true;
+    const isVpn = data.vpn === true;
+    const isTor = data.tor === true;
+    const isFraud = data.fraud_score > 75; // اختياري: رفض IP ذو درجة احتيال عالية
+    return isProxy || isVpn || isTor || isFraud;
   } catch (error) {
-    console.error('Error checking proxy:', error);
-    return false;
+    console.error('Error checking proxy with IPQS:', error);
+    return false; // في حالة الخطأ، نسمح
   }
 }
 
-// دالة لتوليد مفتاح IP
+// دالة لتوليد مفتاح IP (نفس السابق)
 function getIpKey(req: Request, gender: string): string {
   const realIp = getRealIp(req);
   return `ip:${realIp}:${gender}`;
@@ -133,18 +160,34 @@ export default async (req: Request) => {
 
   // التحقق من موقع المستخدم (للتصويت فقط، التراجع مسموح للجميع)
   if (action === 'vote') {
-    const { allowed, country, message } = await getUserCountry(realIp);
-    
-    if (!allowed) {
-      return new Response(
-        JSON.stringify({ 
-          error: "country_not_allowed", 
-          country,
-          //message: message || "التصويت مقتصر على دول الشرق الأوسط فقط"
-          message: message || "لا يمكنك التصويت في الوقت الحالي"
-        }),
-        { status: 403, headers: { "Content-Type": "application/json" } }
-      );
+    // 1. فحص الدولة (إذا كان مفعلاً)
+    if (ENABLE_COUNTRY_CHECK) {
+      const { allowed, country, message } = await getUserCountry(realIp);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({ 
+            error: "country_not_allowed", 
+            country,
+            //message: message || "التصويت مقتصر على دول الشرق الأوسط فقط"
+            message: message || "لا يمكنك التصويت في الوقت الحالي"
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // 2. فحص VPN/بروكسي (إذا كان مفعلاً)
+    if (ENABLE_PROXY_CHECK) {
+      const isProxy = await isProxyOrVpnWithIpqs(realIp);
+      if (isProxy) {
+        return new Response(
+          JSON.stringify({
+            error: "proxy_vpn_detected",
+            message: "لا يمكن التصويت باستخدام VPN أو بروكسي"
+          }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
     }
   }
 
@@ -172,7 +215,6 @@ export default async (req: Request) => {
       }
       
       newVotes += 1;
-      // استخدام VOTE_BLOCK_DURATION بدلاً من 3600
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
         candidateId,
@@ -197,7 +239,6 @@ export default async (req: Request) => {
       }
       
       const elapsed = (Date.now() - record.timestamp) / 1000;
-      // استخدام UNDO_COOLDOWN_DURATION بدلاً من 3600
       if (elapsed < UNDO_COOLDOWN_DURATION) {
         const minutesLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) / 60);
         const secondsLeft = Math.floor((UNDO_COOLDOWN_DURATION - elapsed) % 60);
