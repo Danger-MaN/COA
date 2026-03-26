@@ -4,6 +4,18 @@ import { Lang } from '@/lib/i18n';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
+const [fingerprint, setFingerprint] = useState<string | null>(null);
+
+useEffect(() => {
+  if (typeof window !== 'undefined' && (window as any).FingerprintJS) {
+    (window as any).FingerprintJS.load().then((fp: any) => {
+      fp.get().then((result: any) => {
+        setFingerprint(result.visitorId);
+      });
+    });
+  }
+}, []);
+
 interface ProfileProps {
   candidate: Candidate;
   lang: Lang;
@@ -119,14 +131,14 @@ export function CandidateProfile({
     }
     loadLiveVotes();
   }, [candidate.id]);
-
+  
   const handleVote = async () => {
     if (hasVotedGender) {
       toast.error(alreadyVotedMsg);
       return;
     }
     try {
-      const result = await updateLiveVote(candidate.id, 'vote');
+      const result = await updateLiveVote(candidate.id, 'vote', fingerprint || undefined);
       if (!result.success) {
         const errorMsg = getVoteErrorMessage(result.error!, lang, result.minutesLeft, result.secondsLeft, result.country);
         toast.error(errorMsg);
@@ -149,7 +161,7 @@ export function CandidateProfile({
 
   const handleUndo = async () => {
     try {
-      const result = await updateLiveVote(candidate.id, 'undo');
+      const result = await updateLiveVote(candidate.id, 'undo', fingerprint || undefined);
       if (!result.success) {
         const errorMsg = getVoteErrorMessage(result.error!, lang, result.minutesLeft, result.secondsLeft);
         toast.error(errorMsg);
