@@ -8,7 +8,7 @@ const VOTE_BLOCK_DURATION = VOTE_BLOCK_HOURS * 3600;
 const UNDO_COOLDOWN_DURATION = UNDO_COOLDOWN_HOURS * 3600;
 
 // ===== إعدادات التحقق =====
-const ENABLE_COUNTRY_CHECK = false;   // تفعيل/تعطيل فحص الدولة
+const ENABLE_COUNTRY_CHECK = true;   // تفعيل/تعطيل فحص الدولة
 const ENABLE_PROXY_CHECK = true;      // تفعيل/تعطيل فحص VPN/بروكسي عبر IPQualityScore
 // ==========================
 
