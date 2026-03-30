@@ -21,7 +21,7 @@ interface ProfileProps {
   onVoteChange: () => void;
 }
 
-// تعريف واجهة لـ Google AdSense لمنع أخطاء TypeScript
+// تعريف واجهة AdSense لتجنب أخطاء النوع
 declare global {
   interface Window {
     adsbygoogle: any[];
@@ -44,106 +44,44 @@ export function CandidateProfile({
   bioLabel,
   onVoteChange,
 }: ProfileProps) {
+  // --- الحالات الأصلية (لم يتم تغييرها) ---
   const [selectedImg, setSelectedImg] = useState(0);
   const [votes, setVotes] = useState(() => getVotes(candidate.id));
   const [hasVotedGender, setHasVotedGender] = useState(() => hasVoted(candidate.gender));
   const [votedForThis, setVotedForThis] = useState(() => getVotedCandidateId(candidate.gender) === candidate.id);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [localRank, setLocalRank] = useState<number | null>(null);
-  const [isAdProcessing, setIsAdProcessing] = useState(false); // حالة انتظار الإعلان
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // حالة جديدة فقط للتحكم في انتظار الإعلان دون التأثير على الباقي
+  const [isAdLoading, setIsAdLoading] = useState(false);
 
   const name = candidate.name;
   const BackArrow = lang === 'ar' ? ArrowRight : ArrowLeft;
 
-  // --- منطق الإعلانات المساعد ---
-  const runWithAd = (task: () => Promise<void>) => {
-    setIsAdProcessing(true);
-    
-    // محاولة استدعاء إعلان أدسنس (إذا كان مفعلاً كـ Auto Ads / Vignette)
+  // --- منطق الإعلانات (منفصل تماماً) ---
+  const handleActionWithAd = (actionFn: () => Promise<void>) => {
+    setIsAdLoading(true);
     try {
+      // محاولة طلب إعلان من جوجل
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch (e) {
-      console.error("AdSense Error", e);
+      console.error("AdSense Error:", e);
     }
 
-    // جوجل أدسنس ويب لا يوفر وعداً (Promise) عند الإغلاق، لذا نضع مهلة بسيطة
-    // لمحاكاة الانتقال أو السماح للإعلان بالظهور قبل تنفيذ العملية الخلفية
+    // الانتظار الفني البسيط ثم تنفيذ المهمة الأصلية
     setTimeout(async () => {
-      await task();
-      setIsAdProcessing(false);
-    }, 800); // تأخير بسيط 800ms لضمان سلاسة التجربة
+      await actionFn();
+      setIsAdLoading(false);
+    }, 600); 
   };
 
-  useEffect(() => {
-    if (rank >= 0) return;
-    async function calculateRank() {
-      try {
-        const sameGender = allCandidates.filter(c => c.gender === candidate.gender);
-        const withVotes = await Promise.all(
-          sameGender.map(async (c) => {
-            const liveVotes = await fetchLiveVotes(c.id);
-            const staticVotes = getVotes(c.id);
-            return { id: c.id, votes: staticVotes + liveVotes };
-          })
-        );
-        const sorted = withVotes.sort((a, b) => b.votes - a.votes);
-        const index = sorted.findIndex(item => item.id === candidate.id);
-        setLocalRank(index + 1);
-      } catch (err) {
-        console.error('Error calculating rank:', err);
-      }
+  // --- الدوال الأصلية (تم استرجاع منطقها بالكامل) ---
+  const handleVote = async () => {
+    if (hasVotedGender) {
+      toast.error(alreadyVotedMsg);
+      return;
     }
-    calculateRank();
-  }, [rank, candidate.id, candidate.gender]);
-
-  const updateCooldown = () => {
-    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
-    if (voteTime && votedForThis) {
-      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
-      const remaining = Math.max(0, 3600 - elapsed);
-      setCooldownRemaining(remaining);
-      if (remaining <= 0 && intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    } else {
-      setCooldownRemaining(0);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-  };
-
-  useEffect(() => {
-    updateCooldown();
-    if (votedForThis && cooldownRemaining > 0 && !intervalRef.current) {
-      intervalRef.current = setInterval(updateCooldown, 1000);
-    }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [votedForThis, candidate.gender, cooldownRemaining]);
-
-  useEffect(() => {
-    async function loadLiveVotes() {
-      try {
-        const liveVotes = await fetchLiveVotes(candidate.id);
-        const staticVotes = getVotes(candidate.id);
-        setVotes(staticVotes + liveVotes);
-      } catch (error) {
-        console.error("Error loading live votes:", error);
-      }
-    }
-    loadLiveVotes();
-  }, [candidate.id]);
-
-  // دالة التصويت الأصلية بعد التعديل
-  const executeVote = async () => {
     try {
       const result = await updateLiveVote(candidate.id, 'vote');
       if (!result.success) {
@@ -166,8 +104,7 @@ export function CandidateProfile({
     }
   };
 
-  // دالة التراجع الأصلية بعد التعديل
-  const executeUndo = async () => {
+  const handleUndo = async () => {
     try {
       const result = await updateLiveVote(candidate.id, 'undo');
       if (!result.success) {
@@ -190,18 +127,56 @@ export function CandidateProfile({
     }
   };
 
-  // دوال المعالجة التي تستدعي الإعلان أولاً
-  const handleVoteWithAd = () => {
-    if (hasVotedGender) {
-      toast.error(alreadyVotedMsg);
-      return;
+  // --- تأثيرات الحساب والوقت (مستقرة كما كانت) ---
+  useEffect(() => {
+    if (rank >= 0) return;
+    async function calculateRank() {
+      try {
+        const sameGender = allCandidates.filter(c => c.gender === candidate.gender);
+        const withVotes = await Promise.all(
+          sameGender.map(async (c) => {
+            const liveVotes = await fetchLiveVotes(c.id);
+            const staticVotes = getVotes(c.id);
+            return { id: c.id, votes: staticVotes + liveVotes };
+          })
+        );
+        const sorted = withVotes.sort((a, b) => b.votes - a.votes);
+        const index = sorted.findIndex(item => item.id === candidate.id);
+        setLocalRank(index + 1);
+      } catch (err) { console.error(err); }
     }
-    runWithAd(executeVote);
+    calculateRank();
+  }, [rank, candidate.id, candidate.gender]);
+
+  const updateCooldown = () => {
+    const voteTime = localStorage.getItem(`taj_vote_time_${candidate.gender}`);
+    if (voteTime && votedForThis) {
+      const elapsed = (Date.now() - parseInt(voteTime, 10)) / 1000;
+      const remaining = Math.max(0, 3600 - elapsed);
+      setCooldownRemaining(remaining);
+    } else {
+      setCooldownRemaining(0);
+    }
   };
 
-  const handleUndoWithAd = () => {
-    runWithAd(executeUndo);
-  };
+  useEffect(() => {
+    updateCooldown();
+    if (votedForThis && cooldownRemaining > 0) {
+      intervalRef.current = setInterval(updateCooldown, 1000);
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [votedForThis, candidate.gender, cooldownRemaining]);
+
+  useEffect(() => {
+    async function loadLiveVotes() {
+      try {
+        const liveVotes = await fetchLiveVotes(candidate.id);
+        const staticVotes = getVotes(candidate.id);
+        setVotes(staticVotes + liveVotes);
+      } catch (error) { console.error(error); }
+    }
+    loadLiveVotes();
+  }, [candidate.id]);
 
   const socials = [
     { icon: Facebook, url: candidate.facebook, label: 'Facebook' },
@@ -225,6 +200,7 @@ export function CandidateProfile({
       </button>
 
       <div className="grid gap-8 md:grid-cols-2">
+        {/* معرض الصور - عاد لطبيعته المستقرة */}
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-gold/10 shadow-xl">
             <img
@@ -251,6 +227,7 @@ export function CandidateProfile({
           )}
         </div>
 
+        {/* معلومات المرشح */}
         <div className="flex flex-col justify-center">
           <div className="mb-3 flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 border border-gold/30 text-sm font-bold text-gold">{displayRank}</span>
@@ -271,49 +248,39 @@ export function CandidateProfile({
           <div className="mt-8 flex gap-3">
             {votedForThis ? (
               <button
-                onClick={handleUndoWithAd}
-                disabled={cooldownRemaining > 0 || isAdProcessing}
+                onClick={() => handleActionWithAd(handleUndo)}
+                disabled={cooldownRemaining > 0 || isAdLoading}
                 className={`flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 font-display text-base font-semibold transition-all duration-200 active:scale-[0.97] ${
-                  (cooldownRemaining > 0 || isAdProcessing)
+                  (cooldownRemaining > 0 || isAdLoading)
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
                     : 'border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20'
                 }`}
               >
                 <Undo2 className="h-5 w-5" />
-                {isAdProcessing ? (lang === 'ar' ? 'جاري التحميل...' : 'Loading...') : undoLabel}
-                {cooldownRemaining > 0 && (
-                  <span className="ml-2 text-xs font-mono bg-background/20 px-2 py-1 rounded-full">
-                    {formatCooldown()}
-                  </span>
-                )}
+                {isAdLoading ? (lang === 'ar' ? 'جاري...' : 'Wait...') : undoLabel}
+                {cooldownRemaining > 0 && <span className="ml-2 text-xs font-mono">{formatCooldown()}</span>}
               </button>
             ) : (
               <button
-                onClick={handleVoteWithAd}
-                disabled={hasVotedGender || isAdProcessing}
+                onClick={() => handleActionWithAd(handleVote)}
+                disabled={hasVotedGender || isAdLoading}
                 className={`flex items-center justify-center gap-2 rounded-xl px-8 py-3.5 font-display text-base font-semibold transition-all duration-200 active:scale-[0.97] ${
-                  (hasVotedGender || isAdProcessing)
+                  (hasVotedGender || isAdLoading)
                     ? 'bg-muted text-muted-foreground cursor-not-allowed'
                     : 'gold-gradient text-primary-foreground shadow-lg hover:shadow-xl hover:shadow-gold/20'
                 }`}
               >
                 <Heart className={`h-5 w-5 ${hasVotedGender ? '' : 'fill-current'}`} />
-                {isAdProcessing ? (lang === 'ar' ? 'جاري التحميل...' : 'Loading...') : (hasVotedGender ? votedLabel : voteLabel)}
+                {isAdLoading ? (lang === 'ar' ? 'جاري...' : 'Wait...') : (hasVotedGender ? votedLabel : voteLabel)}
               </button>
             )}
           </div>
 
+          {/* الروابط الاجتماعية */}
           {socials.length > 0 && (
             <div className="mt-8 flex gap-3">
               {socials.map(({ icon: Icon, url, label }) => (
-                <a
-                  key={label}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all duration-300 hover:border-gold hover:text-gold hover:bg-gold/5 active:scale-[0.95]"
-                  aria-label={label}
-                >
+                <a key={label} href={url} target="_blank" rel="noopener noreferrer" className="flex h-11 w-11 items-center justify-center rounded-xl border border-gold/20 text-muted-foreground transition-all hover:border-gold hover:text-gold active:scale-[0.95]">
                   <Icon className="h-4 w-4" />
                 </a>
               ))}
@@ -321,7 +288,24 @@ export function CandidateProfile({
           )}
         </div>
       </div>
-      {/* باقي الكود (المعرض السفلي) يبقى كما هو */}
+
+      {/* المعرض السفلي - تم الحفاظ عليه */}
+      {candidate.gallery.length > 1 && (
+        <div className="mt-12">
+          <h3 className="mb-6 font-display text-xl font-semibold">{galleryLabel}</h3>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            {candidate.gallery.map((img, i) => (
+              <button
+                key={i}
+                onClick={() => { setSelectedImg(i); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                className="overflow-hidden rounded-2xl border border-gold/10 shadow-lg transition-all hover:border-gold/30 active:scale-[0.98]"
+              >
+                <img src={img} alt={`${name} ${i + 1}`} className="w-full object-cover" style={{ aspectRatio: 'auto', maxHeight: '300px' }} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
