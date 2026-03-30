@@ -15,7 +15,7 @@ const ENABLE_PROXY_CHECK = true;      // تفعيل/تعطيل فحص VPN/برو
 // 🔑 ضع مفتاح API الخاص بك هنا (احصل عليه من ipqualityscore.com)
 const IPQS_API_KEY = "eg1ysGyj3T9rlaCxmUkw8MmJtdQ0XZWK";  // استبدل هذا بالمفتاح الحقيقي
 
-// قائمة الدول المسموحة (احتياطي)
+// قائمة الدول المسموحة
 const ALLOWED_COUNTRIES = new Set([
   'SA', 'AE', 'KW', 'QA', 'BH', 'OM',
   'EG', 'JO', 'LB', 'PS', 'SY', 'IQ',
@@ -66,7 +66,7 @@ function isPrivateIp(ip: string): boolean {
 }
 // =======================================================
 
-// فحص الدولة (غير مستخدم حاليًا)
+// فحص الدولة
 async function getUserCountry(ip: string): Promise<{ country: string | null; allowed: boolean; message?: string }> {
   if (!ENABLE_COUNTRY_CHECK) return { country: null, allowed: true };
   try {
@@ -79,11 +79,9 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
     const country = data.country;
     if (!country) return { country: null, allowed: true };
     const allowed = ALLOWED_COUNTRIES.has(country);
-    const countryName = data.country_name || country;
     return {
       country,
       allowed,
-      //message: allowed ? undefined : `التصويت مقتصر على دول الشرق الأوسط فقط. دولتك: ${countryName}`
       message: allowed ? undefined : 'لا يمكنك التصويت في الوقت الحالي'
     };
   } catch (error) {
@@ -92,48 +90,111 @@ async function getUserCountry(ip: string): Promise<{ country: string | null; all
   }
 }
 
-// فحص VPN باستخدام IPQualityScore (المفتاح مكتوب داخل الكود)
+// دالة مساعدة للاتصال بـ IPQualityScore مع مهلة زمنية
+async function fetchWithTimeout(url: string, timeout: number = 5000): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+// فحص VPN باستخدام IPQualityScore
 async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
   if (!ENABLE_PROXY_CHECK) return false;
-  // التحقق من أن المفتاح موجود وليس السلسلة التوجيهية
-  if (!IPQS_API_KEY || IPQS_API_KEY === "Magdi") {
-    console.warn('IPQS_API_KEY not set or still placeholder, proxy check disabled');
+  
+  // التحقق من أن المفتاح موجود وصالح
+  if (!IPQS_API_KEY || IPQS_API_KEY === "eg1ysGyj3T9rlaCxmUkw8MmJtdQ0XZWK" || IPQS_API_KEY === "Magdi") {
+    console.warn('⚠️ IPQS_API_KEY is not set or still using placeholder. Proxy check DISABLED.');
     return false;
   }
+  
   try {
     const url = `https://ipqualityscore.com/api/json/ip/${IPQS_API_KEY}/${ip}`;
-    const response = await fetch(url);
+    console.log(`🔍 Checking IP ${ip} with IPQS...`);
+    
+    const response = await fetchWithTimeout(url, 8000); // 8 ثواني مهلة
+    
     if (!response.ok) {
-      console.error(`IPQS API error: ${response.status}`);
-      return false;
-    }
-    const data = await response.json();
-    console.log(`IPQS result for ${ip}:`, JSON.stringify(data));
-
-    if (!data.success) {
-      console.warn(`IPQS API returned success=false for ${ip}`);
+      console.error(`❌ IPQS API error: ${response.status}`);
       return false;
     }
     
-    // نمنع أي IP يُصنف كـ proxy, vpn, tor, أو درجة احتيال عالية
-    // سنمنع أيضاً إذا كانت risk_score > 0 أو fraud_score > 0 (لأقصى حماية)
+    const data = await response.json();
+    console.log(`📊 IPQS result for ${ip}:`, JSON.stringify(data, null, 2));
+    
+    // التحقق من نجاح الاستجابة
+    if (!data.success) {
+      console.warn(`⚠️ IPQS API returned success=false for ${ip}: ${data.message || 'Unknown error'}`);
+      return false;
+    }
+    
+    // التحقق من صحة البيانات
+    if (data.valid === false) {
+      console.warn(`⚠️ IP ${ip} is invalid`);
+      return false;
+    }
+    
+    // الكشف عن الـ VPN والبروكسي
     const isProxy = data.proxy === true;
     const isVpn = data.vpn === true;
     const isTor = data.tor === true;
-    const isFraud = data.fraud_score > 0;     // أي درجة احتيال > 0 تعتبر مشبوهة
-    const isHighRisk = data.risk_score > 0;   // أي درجة مخاطرة > 0 تعتبر مشبوهة
-
-    // إذا كانت البيانات لا تحتوي على هذه الحقول، نمنع بشكل افتراضي؟ لا، فقط نمنع إذا تم تحديدها
-    const isSuspicious = isProxy || isVpn || isTor || isFraud || isHighRisk;
+    const isActiveVpn = data.active_vpn === true;
+    const isActiveTor = data.active_tor === true;
+    const fraudScore = data.fraud_score || 0;
+    const riskScore = data.risk_score || 0;
+    
+    // أي من هذه المؤشرات تعني أن IP غير مرغوب فيه
+    const isSuspicious = isProxy || isVpn || isTor || isActiveVpn || isActiveTor || fraudScore >= 75 || riskScore >= 75;
     
     if (isSuspicious) {
-      console.log(`IP ${ip} blocked because: proxy=${isProxy}, vpn=${isVpn}, tor=${isTor}, fraud_score=${data.fraud_score}, risk_score=${data.risk_score}`);
+      console.log(`🚫 IP ${ip} BLOCKED: proxy=${isProxy}, vpn=${isVpn}, tor=${isTor}, active_vpn=${isActiveVpn}, fraud_score=${fraudScore}, risk_score=${riskScore}`);
+    } else {
+      console.log(`✅ IP ${ip} ALLOWED: clean connection`);
     }
+    
     return isSuspicious;
-  } catch (error) {
-    console.error('Error checking proxy with IPQS:', error);
-    return false; // في حالة الخطأ، نسمح (يمكن تغيير إلى true لمنع كل التصويت عند فشل API)
+    
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error(`⏱️ IPQS API timeout for ${ip}`);
+    } else {
+      console.error('❌ Error checking proxy with IPQS:', error.message);
+    }
+    // في حالة الخطأ، نسمح بالتصويت (لا نمنع المستخدمين الحقيقيين)
+    return false;
   }
+}
+
+// خدمة بديلة: فحص IP محلي (قائمة سوداء بسيطة لـ VPNs المعروفة)
+// يمكنك إضافة IPs معروفة لـ VPNs هنا إذا أردت
+const BLACKLISTED_IPS = new Set<string>([
+  // يمكن إضافة IPs معروفة هنا
+]);
+
+async function isProxyOrVpnFallback(ip: string): Promise<boolean> {
+  // فحص القائمة السوداء المحلية
+  if (BLACKLISTED_IPS.has(ip)) {
+    console.log(`🚫 IP ${ip} found in local blacklist`);
+    return true;
+  }
+  
+  // فحص نطاقات IP معروفة لـ VPNs (مثال بسيط)
+  // يمكن إضافة نطاقات IP معروفة لخدمات VPN
+  const parts = ip.split('.');
+  if (parts.length === 4) {
+    const first = parseInt(parts[0], 10);
+    // بعض نطاقات VPN المعروفة (مثال)
+    if (first === 45 && parseInt(parts[1], 10) === 33) return true; // NordVPN
+    if (first === 104 && parseInt(parts[1], 10) === 16) return true; // بعض VPNs
+  }
+  
+  return false;
 }
 
 function getIpKey(req: Request, gender: string): string {
@@ -153,6 +214,8 @@ export default async (req: Request) => {
   const gender = candidateId.startsWith('m-') ? 'male' : 'female';
   const ipKey = getIpKey(req, gender);
   const realIp = getRealIp(req);
+  
+  console.log(`📝 Request: action=${action}, candidate=${candidateId}, ip=${realIp}`);
 
   // التحقق من التصويت فقط
   if (action === 'vote') {
@@ -160,6 +223,7 @@ export default async (req: Request) => {
     if (ENABLE_COUNTRY_CHECK) {
       const { allowed, message } = await getUserCountry(realIp);
       if (!allowed) {
+        console.log(`🚫 Country check failed for IP ${realIp}`);
         return new Response(
           JSON.stringify({ error: "country_not_allowed", message: message || "لا يمكنك التصويت في الوقت الحالي" }),
           { status: 403, headers: { "Content-Type": "application/json" } }
@@ -167,10 +231,21 @@ export default async (req: Request) => {
       }
     }
 
-    // 2. فحص VPN/بروكسي
+    // 2. فحص VPN/بروكسي عبر IPQS
     if (ENABLE_PROXY_CHECK) {
       const isProxy = await isProxyOrVpnWithIpqs(realIp);
       if (isProxy) {
+        console.log(`🚫 IPQS proxy check failed for IP ${realIp}`);
+        return new Response(
+          JSON.stringify({ error: "proxy_vpn_detected", message: "لا يمكن التصويت باستخدام VPN أو بروكسي" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      
+      // فحص إضافي باستخدام الخدمة البديلة (اختياري)
+      const isProxyFallback = await isProxyOrVpnFallback(realIp);
+      if (isProxyFallback) {
+        console.log(`🚫 Fallback check failed for IP ${realIp}`);
         return new Response(
           JSON.stringify({ error: "proxy_vpn_detected", message: "لا يمكن التصويت باستخدام VPN أو بروكسي" }),
           { status: 403, headers: { "Content-Type": "application/json" } }
@@ -196,6 +271,7 @@ export default async (req: Request) => {
     if (action === "vote") {
       const ipVoted = await ipStore.get(ipKey);
       if (ipVoted) {
+        console.log(`🚫 IP ${realIp} already voted`);
         return new Response(
           JSON.stringify({ error: "ip_voted" }),
           { status: 403, headers: { "Content-Type": "application/json" } }
@@ -207,6 +283,7 @@ export default async (req: Request) => {
         candidateId,
         gender
       }), { ttl: VOTE_BLOCK_DURATION });
+      console.log(`✅ Vote recorded for ${candidateId} from IP ${realIp}`);
     } 
     else if (action === "undo") {
       const ipRecord = await ipStore.get(ipKey);
@@ -234,6 +311,7 @@ export default async (req: Request) => {
       }
       newVotes = Math.max(0, newVotes - 1);
       await ipStore.delete(ipKey);
+      console.log(`✅ Vote undone for ${candidateId} from IP ${realIp}`);
     } 
     else if (action === "set") {
       const { value, password } = await req.json();
@@ -244,6 +322,7 @@ export default async (req: Request) => {
         return new Response(JSON.stringify({ error: "Invalid value" }), { status: 400 });
       }
       newVotes = value;
+      console.log(`🔧 Admin set votes for ${candidateId} to ${value}`);
     } 
     else {
       return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
