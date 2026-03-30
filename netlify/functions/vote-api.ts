@@ -105,68 +105,56 @@ async function fetchWithTimeout(url: string, timeout: number = 5000): Promise<Re
 }
 
 // فحص VPN باستخدام IPQualityScore
-async function isProxyOrVpnWithIpqs(ip: string): Promise<boolean> {
+async function isProxyOrVpnWithIpqs(req: Request, ip: string): Promise<boolean> {
   if (!ENABLE_PROXY_CHECK) return false;
-  
-  // التحقق من أن المفتاح موجود وصالح
-  if (!IPQS_API_KEY || IPQS_API_KEY === "eg1ysGyj3T9rlaCxmUkw8MmJtdQ0XZWK" || IPQS_API_KEY === "Magdi") {
-    console.warn('⚠️ IPQS_API_KEY is not set or still using placeholder. Proxy check DISABLED.');
+
+  if (!IPQS_API_KEY || IPQS_API_KEY === "Magdi") {
+    console.warn("IPQS_API_KEY not set, proxy check disabled");
     return false;
   }
-  
+
   try {
-    const url = `https://ipqualityscore.com/api/json/ip/${IPQS_API_KEY}/${ip}`;
-    console.log(`🔍 Checking IP ${ip} with IPQS...`);
-    
-    const response = await fetchWithTimeout(url, 8000); // 8 ثواني مهلة
-    
+    const userAgent = req.headers.get("user-agent") || "";
+    const acceptLanguage = req.headers.get("accept-language") || "";
+
+    const params = new URLSearchParams({
+      strictness: "1",
+      allow_public_access_points: "true",
+      user_agent: userAgent,
+      user_language: acceptLanguage,
+    });
+
+    const url = `https://ipqualityscore.com/api/json/ip/${IPQS_API_KEY}/${ip}?${params.toString()}`;
+    const response = await fetch(url);
+
     if (!response.ok) {
-      console.error(`❌ IPQS API error: ${response.status}`);
+      console.error(`IPQS API error: ${response.status}`);
       return false;
     }
-    
+
     const data = await response.json();
-    console.log(`📊 IPQS result for ${ip}:`, JSON.stringify(data, null, 2));
-    
-    // التحقق من نجاح الاستجابة
-    if (!data.success) {
-      console.warn(`⚠️ IPQS API returned success=false for ${ip}: ${data.message || 'Unknown error'}`);
-      return false;
-    }
-    
-    // التحقق من صحة البيانات
-    if (data.valid === false) {
-      console.warn(`⚠️ IP ${ip} is invalid`);
-      return false;
-    }
-    
-    // الكشف عن الـ VPN والبروكسي
+    console.log("IPQS result:", data);
+
+    if (!data.success) return false;
+
     const isProxy = data.proxy === true;
     const isVpn = data.vpn === true;
     const isTor = data.tor === true;
-    const isActiveVpn = data.active_vpn === true;
-    const isActiveTor = data.active_tor === true;
-    const fraudScore = data.fraud_score || 0;
-    const riskScore = data.risk_score || 0;
-    
-    // أي من هذه المؤشرات تعني أن IP غير مرغوب فيه
-    const isSuspicious = isProxy || isVpn || isTor || isActiveVpn || isActiveTor || fraudScore >= 75 || riskScore >= 75;
-    
-    if (isSuspicious) {
-      console.log(`🚫 IP ${ip} BLOCKED: proxy=${isProxy}, vpn=${isVpn}, tor=${isTor}, active_vpn=${isActiveVpn}, fraud_score=${fraudScore}, risk_score=${riskScore}`);
-    } else {
-      console.log(`✅ IP ${ip} ALLOWED: clean connection`);
-    }
-    
-    return isSuspicious;
-    
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      console.error(`⏱️ IPQS API timeout for ${ip}`);
-    } else {
-      console.error('❌ Error checking proxy with IPQS:', error.message);
-    }
-    // في حالة الخطأ، نسمح بالتصويت (لا نمنع المستخدمين الحقيقيين)
+
+    const fraudScore = Number(data.fraud_score ?? 0);
+    const riskScore = Number(data.risk_score ?? 0);
+
+    const isHighRisk =
+      fraudScore >= 90 ||
+      riskScore >= 90 ||
+      data.recent_abuse === true ||
+      data.bot_status === true ||
+      data.active_vpn === true ||
+      data.active_tor === true;
+
+    return isProxy || isVpn || isTor || isHighRisk;
+  } catch (error) {
+    console.error("Error checking proxy with IPQS:", error);
     return false;
   }
 }
@@ -233,7 +221,7 @@ export default async (req: Request) => {
 
     // 2. فحص VPN/بروكسي عبر IPQS
     if (ENABLE_PROXY_CHECK) {
-      const isProxy = await isProxyOrVpnWithIpqs(realIp);
+      const isProxy = await isProxyOrVpnWithIpqs(req, realIp);
       if (isProxy) {
         console.log(`🚫 IPQS proxy check failed for IP ${realIp}`);
         return new Response(
