@@ -205,9 +205,20 @@ export default async (req: Request) => {
   
   console.log(`📝 Request: action=${action}, candidate=${candidateId}, ip=${realIp}`);
 
-  // التحقق من التصويت فقط
+  // ====================== الجزء الخاص بالتصويت فقط ======================
   if (action === 'vote') {
-    // 1. فحص الدولة (إذا كان مفعلاً)
+    // 1. فحص IP المخزن محلياً (أسرع وأرخص)
+    const ipStore = getStore("voter-ips");
+    const ipVoted = await ipStore.get(ipKey);
+    if (ipVoted) {
+      console.log(`🚫 IP ${realIp} already voted`);
+      return new Response(
+        JSON.stringify({ error: "ip_voted" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // 2. فحص الدولة (IPinfo)
     if (ENABLE_COUNTRY_CHECK) {
       const { allowed, message } = await getUserCountry(realIp);
       if (!allowed) {
@@ -219,7 +230,7 @@ export default async (req: Request) => {
       }
     }
 
-    // 2. فحص VPN/بروكسي عبر IPQS
+    // 3. فحص VPN/بروكسي (IPQS) - أغلى وأبطأ
     if (ENABLE_PROXY_CHECK) {
       const isProxy = await isProxyOrVpnWithIpqs(req, realIp);
       if (isProxy) {
@@ -240,8 +251,9 @@ export default async (req: Request) => {
         );
       }
     }
-  }
+  } // end if (action === 'vote')
 
+  // ====================== بقية المنطق (GET, POST) ======================
   const store = getStore("candidate-votes");
   const ipStore = getStore("voter-ips");
   let currentVotes = (await store.get(candidateId, { type: "json" })) || 0;
@@ -257,14 +269,7 @@ export default async (req: Request) => {
     let newVotes = currentVotes as number;
 
     if (action === "vote") {
-      const ipVoted = await ipStore.get(ipKey);
-      if (ipVoted) {
-        console.log(`🚫 IP ${realIp} already voted`);
-        return new Response(
-          JSON.stringify({ error: "ip_voted" }),
-          { status: 403, headers: { "Content-Type": "application/json" } }
-        );
-      }
+      // تم التحقق من ip_voted أعلاه، لذا هنا فقط نضيف التصويت
       newVotes += 1;
       await ipStore.set(ipKey, JSON.stringify({
         timestamp: Date.now(),
